@@ -40,9 +40,8 @@ keywords = ['LUMOS', 'QGIS', 'plugin', 'BELSPO', 'STEREO']  # to help others fin
 
 qgis_min_version = '3.6'  # modern plugins will typically break below 3.4
 
-short_description = 'Project to help the user set up a QGIS plugin'
-long_description = 'Project to help the user set up a QGIS plugin, along with documentation, ' \
-                   'a python package and unit testing.'
+short_description = 'This plugin finds shipwrecks from multibeam sonar data.'
+long_description = 'This plugin finds shipwrecks from multibeam sonar data.'
 
 qgis_metadata_icon = 'images/plugin_logo.png'
 # icon must be square, used in the qgis plugin repository list, QGIS menu, processing toolbox
