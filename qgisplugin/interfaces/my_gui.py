@@ -57,7 +57,7 @@ class MyWidget(QDialog):
 
         # output
         self.outputFileWidget.lineEdit().setReadOnly(True)
-        self.outputFileWidget.lineEdit().setPlaceholderText('[Drew we are testing]')
+        self.outputFileWidget.lineEdit().setPlaceholderText(f"[The size of the array is]")
         self.outputFileWidget.setStorageMode(QgsFileWidget.SaveFile)
         self.outputFileWidget.setFilter("Tiff (*.tif);;All (*.*)")
 
