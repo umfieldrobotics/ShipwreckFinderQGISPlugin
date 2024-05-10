@@ -1,0 +1,38 @@
+# This is a sample build configuration for Python.
+# Check our guides at https://confluence.atlassian.com/x/x4UWN for more examples.
+# Only use spaces to indent your .yml configuration.
+# -----
+# You can specify a custom docker image from Docker Hub as your build environment.
+image: qgis/qgis
+
+definitions:
+  steps:
+    - step: &Test-step
+        script:
+          # test code after each push to bitbucket
+          - python -m pip install -r requirements.txt
+          - python -m pip install -r requirements-dev.txt
+          - python setup.py develop
+          - apt-get update
+          - apt-get install -y xvfb
+          - apt-get install -y wget
+          - apt-get install -y unzip
+          - Xvfb :1 -screen 0 1024x768x16 &> xvfb.log  &
+          - ps aux | grep X
+          - DISPLAY=:1.0
+          - export DISPLAY
+          - python create_resource_file.py
+          - python -m pytest --cov qgisplugin.core --cov qgisplugin.interfaces --cov-report term-missing tests
+    - step: &PYPI-step
+        script:
+          # packaging for pip and uploading
+          - python -m pip install twine
+          - python setup.py sdist
+          - python -m twine upload dist/*.tar.gz -u $PYPI_UNAME -p $PYPI_PW
+
+pipelines:
+  default:
+    - step: *Test-step
+  branches:
+    staging:
+      - step: *PYPI-step

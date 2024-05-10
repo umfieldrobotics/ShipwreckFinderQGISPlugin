@@ -1,0 +1,11 @@
+pytest
+pytest-cov
+py
+
+# Required packages to build docs
+sphinx
+sphinx-autobuild
+sphinx_rtd_theme
+sphinx-argparse
+git-lfs
+mock

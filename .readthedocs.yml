@@ -1,0 +1,21 @@
+# .readthedocs.yml
+
+version: 2      # version of yaml specs
+
+python:
+   version: 3.7
+   install:
+      - requirements: requirements.txt
+      - requirements: requirements-dev.txt
+      - method: setuptools
+        path: .
+
+sphinx:
+  configuration: doc/source/conf.py
+
+build:
+  image: stable
+
+formats:
+  - htmlzip
+  - pdf
