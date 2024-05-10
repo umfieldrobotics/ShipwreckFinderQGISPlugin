@@ -6,6 +6,20 @@ This [QGIS](https://www.qgis.org/en/site/) plugin finds shipwrecks from multibea
 *and Somers Ben and funded by BELSPO STEREO III (Project LUMOS - SR/01/321).*
 *The full code is available from https://bitbucket.org/kul-reseco/create-qgis-plugin.*
 
+### Usage
+Todo todo
+
+Need to install torch and stuff like this (if on mac): 
+```bash
+/Applications/QGIS.app/Contents/MacOS/bin/pip3 install --upgrade remotior-sensus scikit-learn torch
+```
+
+Then you have to run the following which will create a new zip file in ./dist that can be used to install the package in QGIS
+
+```bash
+python3 create_plugin.py
+```
+
 ### SOFTWARE LICENSE
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
