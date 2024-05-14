@@ -16,6 +16,14 @@ Need to install torch and stuff like this (if on mac):
 
 Then you have to run the following which will create a new zip file in ./dist that can be used to install the package in QGIS
 
+**For Linux**
+Install QGIS from terminal...
+```bash
+sudo su
+apt install python3-pip
+pip3 install torch
+```
+
 ```bash
 python3 create_plugin.py
 ```
