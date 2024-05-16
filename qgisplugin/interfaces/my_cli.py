@@ -22,7 +22,7 @@
 import argparse
 from os.path import abspath, join, dirname
 
-from qgisplugin.core.my_code import MyCode
+from qgisplugin.core.ship_seeker import ShipSeeker
 from qgisplugin.interfaces import import_image, write_image
 
 

@@ -31,7 +31,7 @@ from qgis.PyQt.uic import loadUi
 from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QDialogButtonBox
 
 
-from qgisplugin.core.my_code import MyCode
+from qgisplugin.core.ship_seeker import ShipSeeker
 from qgisplugin.interfaces import import_image, write_image
 
 
@@ -140,6 +140,9 @@ class MyWidget(QDialog):
                 raise Exception("If you won't open the result in QGIS, you must select a base file name for output.")
 
             # Get parameters
+            print("The actual layer that is being uses is the following")
+            print(self.imageDropDown.currentLayer())
+
             image_path = self.imageDropDown.currentLayer().source()
             image, metadata = import_image(image_path)
 
@@ -149,7 +152,7 @@ class MyWidget(QDialog):
             threshold = self.thresholdSpinBox.value()
 
             # run code
-            result = MyCode(image=image, normalize=check, quotient=quotient)\
+            result = ShipSeeker(image=image, normalize=check, quotient=quotient)\
                 .execute(constant=add, threshold=threshold, set_progress=self.progressBar.setValue, log=self.log)
             result = result * quotient if check else result
 

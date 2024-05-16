@@ -3,19 +3,18 @@
 import numpy as np
 import torch
 
-class MyCode:
+OUTPUT_PATH = "/home/frog/dev/output/out.tif"
+LAYER_NAME = "Mesa"
+
+class ShipSeeker:
     """
-    todo: Give a short summary of what this code does here.
-
-    e.g.: This script is a super simple example of a set of functions: one to multiply an image with a factor, one
-    to add a constant to an entire image and one to set all values below a threshold to 0.
-
-    This script only contains the mathematical part of your code and should be completely independent of i/o.
-    You start from matrices, integers and other variables, and not from files or widgets!
-
+    The code responsible for splitting up an input raster image into chunks, converting each to 
+    ML format, finding potential shipwrecks using pytorch, then combining the resulting chunks to
+    a final raster image. 
     """
 
-    def __init__(self, image: np.ndarray, normalize: bool = False, quotient: int = 255):
+    #TODO: do this
+    def __init__(self, raster_layer, normalize: bool = False, quotient: int = 255):
         """
         todo: describe your variables
 
@@ -23,13 +22,7 @@ class MyCode:
         :param normalize: e.g. "Set to true to normalize the image"
         :param quotient: e.g. "Normalisation quotient for the image. Ignored if variable_2 is set to False
         """
-        self.image = image
-        if normalize:
-            self.image = self.image / quotient
-
-        # variables required for using the algorithm inside a UI
-        self.set_progress = None
-        self.print_log = None
+        self.raster_layer = raster_layer
 
     def add_to_image(self, constant: float) -> np.ndarray:
         """
@@ -56,23 +49,25 @@ class MyCode:
         :return: the new image
         """
 
-        self.set_progress = set_progress if set_progress else printProgress
-        self.print_log = log if log else print
+        
 
-        # step 1: add 0.01 to the image
-        self.add_to_image(constant)
-        self.print_log('Added {} to the image'.format(constant))
+        # self.set_progress = set_progress if set_progress else printProgress
+        # self.print_log = log if log else print
 
-        self.set_progress(30)
+        # # step 1: add 0.01 to the image
+        # self.add_to_image(constant)
+        # self.print_log('Added {} to the image'.format(constant))
 
-        # step 2: get the indices of all pixels that are below the threshold
-        indices_to_set_to_zero = np.where(self.image < threshold)
-        self.set_progress(60)
+        # self.set_progress(30)
 
-        # step 3: set those pixels to 0
-        new_image = np.copy(self.image)
-        new_image[indices_to_set_to_zero] = 0
-        self.set_progress(90)
+        # # step 2: get the indices of all pixels that are below the threshold
+        # indices_to_set_to_zero = np.where(self.image < threshold)
+        # self.set_progress(60)
+
+        # # step 3: set those pixels to 0
+        # new_image = np.copy(self.image)
+        # new_image[indices_to_set_to_zero] = 0
+        # self.set_progress(90)
 
         self.print_log('Core processing done.')
 

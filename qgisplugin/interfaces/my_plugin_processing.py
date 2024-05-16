@@ -24,7 +24,7 @@ from qgis.PyQt.QtGui import QIcon
 from qgis.core import QgsProcessingAlgorithm, QgsProcessingParameterRasterLayer, QgsProcessingParameterNumber, \
     QgsProcessingParameterFileDestination, QgsProcessingParameterBoolean, QgsProcessingContext
 
-from qgisplugin.core.my_code import MyCode
+from qgisplugin.core.ship_seeker import ShipSeeker
 from qgisplugin.interfaces import import_image, write_image
 
 

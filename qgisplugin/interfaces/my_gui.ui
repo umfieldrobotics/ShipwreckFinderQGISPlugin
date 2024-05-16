@@ -114,7 +114,7 @@
               </font>
              </property>
              <property name="text">
-              <string>Select an image</string>
+              <string>Select your baryometric data raster</string>
              </property>
             </widget>
            </item>
