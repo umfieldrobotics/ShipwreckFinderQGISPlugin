@@ -6,7 +6,27 @@ This [QGIS](https://www.qgis.org/en/site/) plugin finds shipwrecks from multibea
 *and Somers Ben and funded by BELSPO STEREO III (Project LUMOS - SR/01/321).*
 *The full code is available from https://bitbucket.org/kul-reseco/create-qgis-plugin.*
 
-### Usage
+### Installation
+**With Conda**
+1. Create a new conda env
+```bash
+conda create --name qgis_env
+conda activate qgis_env
+```
+2. Install QGIS
+```bash
+conda install -c conda-forge qgis
+```
+3. Clone this repository
+```bash
+git clone git@thit.git
+```
+3. Install requirements
+```bash
+pip install -r requirements.txt
+```
+
+**QGIS already installed?**
 Todo todo
 
 Need to install torch and stuff like this (if on mac): 
