@@ -2,9 +2,102 @@
 
 import numpy as np
 import torch
+import os
+from osgeo import gdal
+
+import random
 
 OUTPUT_PATH = "/home/frog/dev/output/out.tif"
 LAYER_NAME = "Mesa"
+
+from qgis.core import (
+    QgsRasterFileWriter,
+    QgsRasterPipe
+)
+
+def export_raster_as_geotiff(raster_layer, output_path):
+    # Export the raster as GeoTIFF
+    writer = QgsRasterFileWriter(output_path)
+    pipe = QgsRasterPipe()
+    pipe.set(raster_layer.dataProvider().clone())
+
+    #TODO: This is deprecated
+    writer.writeRaster(pipe, raster_layer.width(), raster_layer.height(), raster_layer.extent(), raster_layer.crs())
+
+def create_chunks(input_path, output_dir, chunk_size=512):
+    # Open the raster dataset
+    dataset = gdal.Open(input_path)
+    if dataset is None:
+        raise Exception("Failed to open the raster dataset.")
+
+    # Get raster properties
+    num_bands = dataset.RasterCount
+    x_size = dataset.RasterXSize
+    y_size = dataset.RasterYSize
+
+    # Calculate number of chunks
+    x_chunks = (x_size + chunk_size - 1) // chunk_size
+    y_chunks = (y_size + chunk_size - 1) // chunk_size
+
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Loop through each chunk
+    for i in range(x_chunks):
+        for j in range(y_chunks):
+            # Calculate chunk coordinates and size
+            x_offset = i * chunk_size
+            y_offset = j * chunk_size
+            width = min(chunk_size, x_size - x_offset)
+            height = min(chunk_size, y_size - y_offset)
+
+            # Create chunk file name
+            chunk_filename = f"chunk_{i}_{j}.tif"
+            chunk_path = os.path.join(output_dir, chunk_filename)
+
+            # Create chunk dataset
+            driver = gdal.GetDriverByName("GTiff")
+            chunk_dataset = driver.Create(chunk_path, width, height, num_bands, dataset.GetRasterBand(1).DataType)
+
+            # Copy geotransform and projection from original dataset
+            chunk_dataset.SetGeoTransform((
+                dataset.GetGeoTransform()[0] + x_offset * dataset.GetGeoTransform()[1],
+                dataset.GetGeoTransform()[1],
+                0,
+                dataset.GetGeoTransform()[3] + y_offset * dataset.GetGeoTransform()[5],
+                0,
+                dataset.GetGeoTransform()[5]
+            ))
+            chunk_dataset.SetProjection(dataset.GetProjection())
+
+            # Read and write data for each band
+            for band_num in range(1, num_bands + 1):
+                band = dataset.GetRasterBand(band_num)
+                chunk_band = chunk_dataset.GetRasterBand(band_num)
+
+
+
+                data = band.ReadAsArray(x_offset, y_offset, width, height)
+
+                k = random.uniform(0.5, 1.5)
+                data = data * k 
+                data[data>255] = 255
+
+                chunk_band.WriteArray(data)
+
+            # Close chunk dataset
+            chunk_dataset = None
+
+    # Close original dataset
+    dataset = None
+
+def merge_chunks(output_dir, output_path):
+    # Get a list of chunk files
+    chunk_files = [os.path.join(output_dir, f) for f in os.listdir(output_dir) if f.endswith('.tif')]
+    
+    # Use gdal_merge.py script to merge the chunks
+    gdal_merge_cmd = f"gdal_merge.py -o {output_path} " + " ".join(chunk_files)
+    os.system(gdal_merge_cmd)
 
 class ShipSeeker:
     """
@@ -14,7 +107,7 @@ class ShipSeeker:
     """
 
     #TODO: do this
-    def __init__(self, raster_layer, normalize: bool = False, quotient: int = 255):
+    def __init__(self, raster_layer):
         """
         todo: describe your variables
 
@@ -34,45 +127,34 @@ class ShipSeeker:
 
         return self.image + constant
 
-    def execute(self, constant: float, threshold: float, set_progress: callable = None,
-                log: callable = print) -> np.ndarray:
+    def execute(self, set_progress: callable = None,
+                log: callable = print):
         """
-        This part is usually the core of your plugin: this function is called when the user clicks "run".
-
-        Here we don't do anything special: we add a number to an image and then set all values in an image to 0 where
-        they are below a given threshold.
-
-        :param constant: The constant to add to each pixel of the image.
-        :param threshold: all values below this threshold are set to 0
-        :param set_progress: communicate progress (refer to the progress bar in case of GUI; otherwise print to console)
-        :param log: communicate messages (refer to the print_log tab in the GUI; otherwise print to the console)
-        :return: the new image
+        The core of the plugin
         """
+
+        # Output path for chunks
+        temp_dir = os.path.join(os.path.dirname(OUTPUT_PATH), "temp_chunks")
+        os.makedirs(temp_dir, exist_ok=True)
 
         
 
-        # self.set_progress = set_progress if set_progress else printProgress
-        # self.print_log = log if log else print
 
-        # # step 1: add 0.01 to the image
-        # self.add_to_image(constant)
-        # self.print_log('Added {} to the image'.format(constant))
+        # Export the raster as a geotiff
+        geotiff_path = os.path.join(temp_dir, "exported_geotiff.tif")
+        export_raster_as_geotiff(self.raster_layer, geotiff_path)
 
-        # self.set_progress(30)
 
-        # # step 2: get the indices of all pixels that are below the threshold
-        # indices_to_set_to_zero = np.where(self.image < threshold)
-        # self.set_progress(60)
+        # Create all of the chunks 
+        create_chunks(geotiff_path, temp_dir)
 
-        # # step 3: set those pixels to 0
-        # new_image = np.copy(self.image)
-        # new_image[indices_to_set_to_zero] = 0
-        # self.set_progress(90)
+        # Merge all of the chunks
+        merge_chunks(temp_dir, OUTPUT_PATH)
 
-        self.print_log('Core processing done.')
-
-        return new_image
-
+        # Clean up all of the chunks
+        for f in os.listdir(temp_dir):
+            os.remove(os.path.join(temp_dir, f))
+        os.rmdir(temp_dir)
 
 def printProgress(value: int):
     """ Replacement for the GUI progress bar """

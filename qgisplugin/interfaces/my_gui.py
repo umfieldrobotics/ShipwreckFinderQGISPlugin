@@ -140,8 +140,7 @@ class MyWidget(QDialog):
                 raise Exception("If you won't open the result in QGIS, you must select a base file name for output.")
 
             # Get parameters
-            print("The actual layer that is being uses is the following")
-            print(self.imageDropDown.currentLayer())
+            raster_layer = self.imageDropDown.currentLayer()
 
             image_path = self.imageDropDown.currentLayer().source()
             image, metadata = import_image(image_path)
@@ -152,18 +151,19 @@ class MyWidget(QDialog):
             threshold = self.thresholdSpinBox.value()
 
             # run code
-            result = ShipSeeker(image=image, normalize=check, quotient=quotient)\
-                .execute(constant=add, threshold=threshold, set_progress=self.progressBar.setValue, log=self.log)
+            result = ShipSeeker(raster_layer=raster_layer)\
+                .execute(set_progress=self.progressBar.setValue, log=self.log)
             result = result * quotient if check else result
 
             self.progressBar.setValue(100)
 
             # write image to file
-            if len(output_path) == 0:
-                output_path = op.join(tempfile.gettempdir(), op.basename(op.splitext(image_path)[0]))
+            print("THe output path will be: ", output_path)
+            # if len(output_path) == 0:
+            #     output_path = op.join(tempfile.gettempdir(), op.basename(op.splitext(image_path)[0]))
 
-            output_path = write_image(file_path=output_path, image=result, geo_transform=metadata['geo_transform'],
-                                      projection=metadata['projection'])
+            # output_path = write_image(file_path=output_path, image=result, geo_transform=metadata['geo_transform'],
+            #                           projection=metadata['projection'])
 
             # Open result in QGIS
             if self.openCheckBox.isChecked():
