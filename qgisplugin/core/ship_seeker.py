@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 
-import numpy as np
-import torch
 import os
+import glob
+import numpy as np
 from osgeo import gdal
+from qgisplugin.core.tiff_utils import crop_tiff, create_chunks, merge_chunks, get_tiff_size, merge_transparent_parts, copy_tiff_metadata
+from qgisplugin.core.train import test
 
 import random
 
 OUTPUT_PATH = "/home/frog/dev/output/out.tif"
-LAYER_NAME = "Mesa"
+WEIGHTS_PATH = "/home/frog/dev/ShipwreckSeekerQGISPlugin/qgisplugin/core/mbes_unet.pt"
 
 from qgis.core import (
     QgsRasterFileWriter,
@@ -23,81 +25,6 @@ def export_raster_as_geotiff(raster_layer, output_path):
 
     #TODO: This is deprecated
     writer.writeRaster(pipe, raster_layer.width(), raster_layer.height(), raster_layer.extent(), raster_layer.crs())
-
-def create_chunks(input_path, output_dir, chunk_size=512):
-    # Open the raster dataset
-    dataset = gdal.Open(input_path)
-    if dataset is None:
-        raise Exception("Failed to open the raster dataset.")
-
-    # Get raster properties
-    num_bands = dataset.RasterCount
-    x_size = dataset.RasterXSize
-    y_size = dataset.RasterYSize
-
-    # Calculate number of chunks
-    x_chunks = (x_size + chunk_size - 1) // chunk_size
-    y_chunks = (y_size + chunk_size - 1) // chunk_size
-
-    # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Loop through each chunk
-    for i in range(x_chunks):
-        for j in range(y_chunks):
-            # Calculate chunk coordinates and size
-            x_offset = i * chunk_size
-            y_offset = j * chunk_size
-            width = min(chunk_size, x_size - x_offset)
-            height = min(chunk_size, y_size - y_offset)
-
-            # Create chunk file name
-            chunk_filename = f"chunk_{i}_{j}.tif"
-            chunk_path = os.path.join(output_dir, chunk_filename)
-
-            # Create chunk dataset
-            driver = gdal.GetDriverByName("GTiff")
-            chunk_dataset = driver.Create(chunk_path, width, height, num_bands, dataset.GetRasterBand(1).DataType)
-
-            # Copy geotransform and projection from original dataset
-            chunk_dataset.SetGeoTransform((
-                dataset.GetGeoTransform()[0] + x_offset * dataset.GetGeoTransform()[1],
-                dataset.GetGeoTransform()[1],
-                0,
-                dataset.GetGeoTransform()[3] + y_offset * dataset.GetGeoTransform()[5],
-                0,
-                dataset.GetGeoTransform()[5]
-            ))
-            chunk_dataset.SetProjection(dataset.GetProjection())
-
-            # Read and write data for each band
-            for band_num in range(1, num_bands + 1):
-                band = dataset.GetRasterBand(band_num)
-                chunk_band = chunk_dataset.GetRasterBand(band_num)
-
-
-
-                data = band.ReadAsArray(x_offset, y_offset, width, height)
-
-                k = random.uniform(0.5, 1.5)
-                data = data * k 
-                data[data>255] = 255
-
-                chunk_band.WriteArray(data)
-
-            # Close chunk dataset
-            chunk_dataset = None
-
-    # Close original dataset
-    dataset = None
-
-def merge_chunks(output_dir, output_path):
-    # Get a list of chunk files
-    chunk_files = [os.path.join(output_dir, f) for f in os.listdir(output_dir) if f.endswith('.tif')]
-    
-    # Use gdal_merge.py script to merge the chunks
-    gdal_merge_cmd = f"gdal_merge.py -o {output_path} " + " ".join(chunk_files)
-    os.system(gdal_merge_cmd)
 
 class ShipSeeker:
     """
@@ -117,39 +44,41 @@ class ShipSeeker:
         """
         self.raster_layer = raster_layer
 
-    def add_to_image(self, constant: float) -> np.ndarray:
-        """
-        Add a constant to an image.
-
-        :param constant: The constant to add to each pixel of the image.
-        :return: The new image.
-        """
-
-        return self.image + constant
-
-    def execute(self, set_progress: callable = None,
+    def execute(self, output_path, set_progress: callable = None,
                 log: callable = print):
         """
         The core of the plugin
         """
 
         # Output path for chunks
-        temp_dir = os.path.join(os.path.dirname(OUTPUT_PATH), "temp_chunks")
+        temp_dir = os.path.join(os.path.dirname(output_path), "temp_chunks")
         os.makedirs(temp_dir, exist_ok=True)
-
-        
+        set_progress(5)
 
 
         # Export the raster as a geotiff
         geotiff_path = os.path.join(temp_dir, "exported_geotiff.tif")
         export_raster_as_geotiff(self.raster_layer, geotiff_path)
-
-
-        # Create all of the chunks 
+        width, height = get_tiff_size(geotiff_path)
+        
+        # Create cropped images in /temp_chunks/
         create_chunks(geotiff_path, temp_dir)
+        os.remove(geotiff_path)
 
-        # Merge all of the chunks
-        merge_chunks(temp_dir, OUTPUT_PATH)
+        input_files = glob.glob(os.path.join(temp_dir, "*"))
+
+        # Copy metadata to model output
+        for i, input_file_path in enumerate(input_files):
+            output_file_path = test([input_file_path], WEIGHTS_PATH)[0]
+
+            merge_transparent_parts(input_file_path, output_file_path, output_file_path)
+            copy_tiff_metadata(input_file_path, output_file_path)
+
+            set_progress(int(100.0*i/len(input_files)))
+
+        # Merge the chunks
+        merge_chunks(temp_dir, output_path)
+        crop_tiff(output_path, output_path, width, height)
 
         # Clean up all of the chunks
         for f in os.listdir(temp_dir):

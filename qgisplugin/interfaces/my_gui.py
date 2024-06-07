@@ -30,9 +30,21 @@ from qgis.utils import iface
 from qgis.PyQt.uic import loadUi
 from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QDialogButtonBox
 
+from qgis.PyQt.QtWidgets import (
+    QMenu,
+    QAction,
+    QDialog,
+    QVBoxLayout,
+    QDialogButtonBox,
+    QLabel
+)
+from qgis.PyQt.QtCore import QCoreApplication, pyqtSignal
+from qgis.PyQt.QtGui import QCursor
+
 
 from qgisplugin.core.ship_seeker import ShipSeeker
 from qgisplugin.interfaces import import_image, write_image
+from qgisplugin.interfaces.RectangleMapTool import RectangleMapTool
 
 
 class MyWidget(QDialog):
@@ -44,6 +56,15 @@ class MyWidget(QDialog):
 
         # todo: link widgets to code in your __init__ function
 
+        if iface is not None:
+            canvas = iface.mapCanvas()
+            self.prevMapTool = canvas.mapTool()
+            self.tool = RectangleMapTool(canvas)
+            self.tool.rectangleCreated.connect(self.updateExtent)
+        else:
+            self.prevMapTool = None
+            self.tool = None
+
         # input
         excluded_providers = [p for p in QgsProviderRegistry.instance().providerList() if p not in ['gdal']]
         self.imageDropDown.setExcludedProviders(excluded_providers)
@@ -52,12 +73,11 @@ class MyWidget(QDialog):
         self.imageAction.triggered.connect(self._browse_for_image)
         self.imageButton.setDefaultAction(self.imageAction)
 
-        # parameters
-        self.normalizationCheckBox.stateChanged.connect(self._toggle_normalization)
+        self.extentButton.clicked.connect(self.selectExtent)
 
         # output
         self.outputFileWidget.lineEdit().setReadOnly(True)
-        self.outputFileWidget.lineEdit().setPlaceholderText(f"[The size of the array is]")
+        self.outputFileWidget.lineEdit().setPlaceholderText(f"Output tiff file path...")
         self.outputFileWidget.setStorageMode(QgsFileWidget.SaveFile)
         self.outputFileWidget.setFilter("Tiff (*.tif);;All (*.*)")
 
@@ -76,6 +96,68 @@ class MyWidget(QDialog):
         # widget variables
         self.image = None
         self.classified = None
+
+    def setExtentValueFromRect(self, r):
+        s = '{},{},{},{}'.format(
+            r.xMinimum(), r.xMaximum(), r.yMinimum(), r.yMaximum())
+
+        try:
+            self.crs = r.crs()
+        except:
+            self.crs = QgsProject.instance().crs()
+        if self.crs.isValid():
+            s += ' [' + self.crs.authid() + ']'
+
+        self.extentText.setText(s)
+        self.tool.reset()
+        canvas = iface.mapCanvas()
+        canvas.setMapTool(self.prevMapTool)
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def selectOnCanvas(self):
+        print("selectOnCanvas selected")
+        canvas = iface.mapCanvas()
+        canvas.setMapTool(self.tool)
+        self.showMinimized()
+
+    def useLayerExtent(self):
+        print("useLayerExtent selected")
+
+        pass
+    
+    def useCanvasExtent(self):
+        print("useCanvasExtent selected")
+
+        pass
+
+    def updateExtent(self):
+        r = self.tool.rectangle()
+        self.setExtentValueFromRect(r)
+
+    def selectExtent(self):
+        popupmenu = QMenu()
+
+        useCanvasExtentAction = QAction(
+            QCoreApplication.translate("ExtentSelectionPanel", 'Use Canvas Extent'),
+            self.extentButton)
+        useLayerExtentAction = QAction(
+            QCoreApplication.translate("ExtentSelectionPanel", 'Use Layer Extent…'),
+            self.extentButton)
+        selectOnCanvasAction = QAction(
+            self.tr('Select Extent on Canvas'), self.extentButton)
+        
+        popupmenu.addAction(useCanvasExtentAction)
+        popupmenu.addAction(useLayerExtentAction)
+        popupmenu.addSeparator()
+        popupmenu.addAction(selectOnCanvasAction)
+
+        selectOnCanvasAction.triggered.connect(self.selectOnCanvas)
+        useLayerExtentAction.triggered.connect(self.useLayerExtent)
+        useCanvasExtentAction.triggered.connect(self.useCanvasExtent)
+
+        popupmenu.exec(QCursor.pos())
 
     def log(self, text):
         # append text to log window
@@ -102,30 +184,13 @@ class MyWidget(QDialog):
         except Exception as e:
             self.log(e)
 
-    def _toggle_normalization(self, state: int):
-        """ Enable the normalization spin box when checking the box. """
-
-        self.normalizationSpinBox.setEnabled(state)
-
     def _choose_image(self):
-        """ When the user browsers for an image, the normalization value is set automatically. """
+        """ When the user browsers for an image """
 
         layer = self.imageDropDown.currentLayer()
 
         if layer is None:
             return
-        try:
-            block = layer.dataProvider().block(1, layer.extent(), layer.width(), layer.height())
-            row = np.repeat(np.arange(0, layer.height()), layer.width())
-            col = np.tile(np.arange(0, layer.width()), layer.height())
-            data = [block.value(x, y) for x, y in zip(row, col)]
-
-            # a short list of unique values
-            limit = np.nanmax(np.array(data))
-            self.normalizationSpinBox.setValue(limit)
-
-        except Exception as e:
-            self.log(e)
 
     def _run(self):
         """ Read all parameters and pass them on to the core function. """
@@ -145,25 +210,14 @@ class MyWidget(QDialog):
             image_path = self.imageDropDown.currentLayer().source()
             image, metadata = import_image(image_path)
 
-            check = self.normalizationCheckBox.isEnabled()
-            quotient = self.normalizationSpinBox.value() if check else None
-            add = self.constantSpinBox.value()
-            threshold = self.thresholdSpinBox.value()
-
             # run code
             result = ShipSeeker(raster_layer=raster_layer)\
-                .execute(set_progress=self.progressBar.setValue, log=self.log)
-            result = result * quotient if check else result
+                .execute(output_path, set_progress=self.progressBar.setValue, log=self.log)
 
             self.progressBar.setValue(100)
 
             # write image to file
             print("THe output path will be: ", output_path)
-            # if len(output_path) == 0:
-            #     output_path = op.join(tempfile.gettempdir(), op.basename(op.splitext(image_path)[0]))
-
-            # output_path = write_image(file_path=output_path, image=result, geo_transform=metadata['geo_transform'],
-            #                           projection=metadata['projection'])
 
             # Open result in QGIS
             if self.openCheckBox.isChecked():
