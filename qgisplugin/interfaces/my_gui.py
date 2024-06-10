@@ -24,8 +24,9 @@ import numpy as np
 import tempfile
 
 from osgeo import gdal
-from qgis.gui import QgsFileWidget
-from qgis.core import QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer, QgsProject
+from qgis.gui import QgsFileWidget, QgsMapLayerComboBox
+from qgis.core import Qgis, QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer, QgsProject, QgsReferencedRectangle
+
 from qgis.utils import iface
 from qgis.PyQt.uic import loadUi
 from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QDialogButtonBox
@@ -46,6 +47,30 @@ from qgisplugin.core.ship_seeker import ShipSeeker
 from qgisplugin.interfaces import import_image, write_image
 from qgisplugin.interfaces.RectangleMapTool import RectangleMapTool
 
+
+class LayerSelectionDialog(QDialog):
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(self.tr('Select Extent'))
+
+        vl = QVBoxLayout()
+        vl.addWidget(QLabel(self.tr('Use extent from')))
+        self.combo = QgsMapLayerComboBox()
+        self.combo.setFilters(
+            Qgis.LayerFilter.HasGeometry | Qgis.LayerFilter.RasterLayer | Qgis.LayerFilter.MeshLayer)
+        vl.addWidget(self.combo)
+
+        self.button_box = QDialogButtonBox()
+        self.button_box.setStandardButtons(QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok)
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+
+        vl.addWidget(self.button_box)
+        self.setLayout(vl)
+
+    def selected_layer(self):
+        return self.combo.currentLayer()
 
 class MyWidget(QDialog):
     """ QDialog to interactively set up the Neural Network input and output. """
@@ -117,21 +142,20 @@ class MyWidget(QDialog):
         self.activateWindow()
 
     def selectOnCanvas(self):
-        print("selectOnCanvas selected")
         canvas = iface.mapCanvas()
         canvas.setMapTool(self.tool)
         self.showMinimized()
 
     def useLayerExtent(self):
-        print("useLayerExtent selected")
-
-        pass
+        dlg = LayerSelectionDialog(self)
+        if dlg.exec():
+            layer = dlg.selected_layer()
+            self.setExtentValueFromRect(QgsReferencedRectangle(layer.extent(), layer.crs()))
     
     def useCanvasExtent(self):
-        print("useCanvasExtent selected")
-
-        pass
-
+        self.setExtentValueFromRect(QgsReferencedRectangle(iface.mapCanvas().extent(), 
+                                                           iface.mapCanvas().mapSettings().destinationCrs()))
+        
     def updateExtent(self):
         r = self.tool.rectangle()
         self.setExtentValueFromRect(r)
@@ -179,10 +203,11 @@ class MyWidget(QDialog):
 
                 self.imageDropDown.setLayer(layer)
 
-        except AssertionError:
-            self.log("'" + path + "' not recognized as a supported file format.")
+        # except AssertionError:
+        #     self.log("'" + path + "' not recognized as a supported file format.")
         except Exception as e:
             self.log(e)
+            raise e
 
     def _choose_image(self):
         """ When the user browsers for an image """
@@ -210,8 +235,11 @@ class MyWidget(QDialog):
             image_path = self.imageDropDown.currentLayer().source()
             image, metadata = import_image(image_path)
 
+            extent_str = self.extentText.text()
+            print("Just got the text...")
+
             # run code
-            result = ShipSeeker(raster_layer=raster_layer)\
+            result = ShipSeeker(raster_layer=raster_layer, extent_str=extent_str)\
                 .execute(output_path, set_progress=self.progressBar.setValue, log=self.log)
 
             self.progressBar.setValue(100)
@@ -224,10 +252,11 @@ class MyWidget(QDialog):
                 output_raster_layer = QgsRasterLayer(output_path, 'New Image')
                 QgsProject.instance().addMapLayer(output_raster_layer, True)
 
-        except AttributeError:
-            self.log("Please select an image.")
+        # except AttributeError:
+        #     self.log("Please select an image.")
         except Exception as e:
             self.log(e)
+            raise e
 
 
 def _run():

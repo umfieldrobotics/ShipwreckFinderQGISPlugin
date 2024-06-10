@@ -7,9 +7,12 @@ from osgeo import gdal
 from qgisplugin.core.tiff_utils import crop_tiff, create_chunks, merge_chunks, get_tiff_size, merge_transparent_parts, copy_tiff_metadata
 from qgisplugin.core.train import test
 
+
+from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject, QgsPointXY
+from osgeo import gdal, osr
+
 import random
 
-OUTPUT_PATH = "/home/frog/dev/output/out.tif"
 WEIGHTS_PATH = "/home/frog/dev/ShipwreckSeekerQGISPlugin/qgisplugin/core/mbes_unet.pt"
 
 from qgis.core import (
@@ -33,16 +36,30 @@ class ShipSeeker:
     a final raster image. 
     """
 
+    def crop_image_using_extent(self, image_path, extent_string, output_path):
+        # Parsing the input string for extent and source CRS
+        extent_str, projection_str = extent_string.split(' ')
+        xmin, xmax, ymin, ymax = map(float, extent_str.split(','))
+        src_crs = projection_str.strip('[]')
+
+        print("Translating between", src_crs, "to", "EPSG:4326")
+        gdal_translate_options = gdal.TranslateOptions(
+                                    projWin=[xmin, ymax, xmax, ymin],
+                                    projWinSRS=src_crs,
+                                    outputSRS=None,
+                                    format="GTiff"
+                                )
+        
+        input_ds = gdal.Open(image_path)
+        gdal.Translate(output_path, input_ds, options=gdal_translate_options)
+
     #TODO: do this
-    def __init__(self, raster_layer):
+    def __init__(self, raster_layer, extent_str):
         """
         todo: describe your variables
-
-        :param image: e.g. "Input image [n bands x m rows x b bands]"
-        :param normalize: e.g. "Set to true to normalize the image"
-        :param quotient: e.g. "Normalisation quotient for the image. Ignored if variable_2 is set to False
         """
         self.raster_layer = raster_layer
+        self.extent_str = extent_str
 
     def execute(self, output_path, set_progress: callable = None,
                 log: callable = print):
@@ -53,17 +70,23 @@ class ShipSeeker:
         # Output path for chunks
         temp_dir = os.path.join(os.path.dirname(output_path), "temp_chunks")
         os.makedirs(temp_dir, exist_ok=True)
-        set_progress(5)
+        set_progress(1)
 
 
         # Export the raster as a geotiff
         geotiff_path = os.path.join(temp_dir, "exported_geotiff.tif")
         export_raster_as_geotiff(self.raster_layer, geotiff_path)
-        width, height = get_tiff_size(geotiff_path)
+
+        #Crop the image using the extent
+        cropped_path = os.path.join(temp_dir, "cropped_geotiff.tif")
+        self.crop_image_using_extent(geotiff_path, self.extent_str, cropped_path) # Todo, use this instead
+
+        width, height = get_tiff_size(cropped_path)
         
         # Create cropped images in /temp_chunks/
-        create_chunks(geotiff_path, temp_dir)
+        create_chunks(cropped_path, temp_dir)
         os.remove(geotiff_path)
+        os.remove(cropped_path)
 
         input_files = glob.glob(os.path.join(temp_dir, "*"))
 
