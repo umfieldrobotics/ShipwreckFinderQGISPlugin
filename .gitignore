@@ -1,3 +1,5 @@
+qgisplugin/core/mbes_unet.pt
+
 # do not store compiled qt resource files
 *_rc.py
 
