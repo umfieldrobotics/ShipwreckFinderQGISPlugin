@@ -7,10 +7,10 @@ This [QGIS](https://www.qgis.org/en/site/) plugin finds shipwrecks from multibea
 *The full code is available from https://bitbucket.org/kul-reseco/create-qgis-plugin.*
 
 ### Installation
-**With Conda**
+**OPTION 1: With Conda (recommended)**
 1. Create a new conda env
 ```bash
-conda create --name qgis_env
+conda create --name qgis_env python=3.11
 conda activate qgis_env
 ```
 2. Install QGIS
@@ -19,34 +19,42 @@ conda install -c conda-forge qgis
 ```
 3. Clone this repository
 ```bash
-git clone git@thit.git
+git clone git@github.com:umfieldrobotics/ShipwreckSeekerQGISPlugin.git
 ```
 3. Install requirements
 ```bash
 pip install -r requirements.txt
 ```
 
-**QGIS already installed?**
-Todo todo
-
-Need to install torch and stuff like this (if on mac): 
+4. Run qgis
 ```bash
-/Applications/QGIS.app/Contents/MacOS/bin/pip3 install --upgrade remotior-sensus scikit-learn torch
+qgis
 ```
 
-Then you have to run the following which will create a new zip file in ./dist that can be used to install the package in QGIS
+**OPTION 2: Install ontop of previous QGIS Installation (Mac)**
 
-**For Linux**
+Locate the qgis version of pip and install dependencies
+```bash
+/Applications/QGIS.app/Contents/MacOS/bin/pip3 install --upgrade -r requirements.txt
+```
+
+**OPTION 3: Install ontop of previous QGIS Installation (Linux)**
 Install QGIS from terminal...
 ```bash
 sudo su
 apt install python3-pip
-pip3 install torch
+pip3 install -r requirements.txt
 ```
 
+## Build the Plugin
 ```bash
 python3 create_plugin.py
 ```
+
+This should create a tar.gz file in the `./dist` folder. To load the plugin, go to `Plugins` -> `Manage and Install Plugins...` -> `Install from ZIP` and input the file that was just created. Then go to the  `Installed` tab, and toggle the `Shipwreck Seeker Plugin` off and on to activate it. 
+
+## Usage
+To use the plugin, go to `Raster` -> `Shipwreck Seeker Menu` -> `Shipwreck Seeker`.
 
 ### SOFTWARE LICENSE
 
