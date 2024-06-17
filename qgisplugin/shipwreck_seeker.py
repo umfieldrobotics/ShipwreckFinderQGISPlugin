@@ -27,6 +27,7 @@ from qgis.core import QgsApplication
 
 # todo: import your own GUI or PROVIDER:
 from qgisplugin.interfaces.my_gui import MyWidget
+from qgisplugin.interfaces.thresholding_gui import ThresholdingWidget
 from qgisplugin.interfaces.my_plugin_provider import MyProcessingProvider
 from qgisplugin.images.cqp_resources_rc import qInitResources
 qInitResources()  # necessary to be able to access your images
@@ -60,7 +61,13 @@ class ShipwreckSeeker:
 
         # add action button to raster menu
         action = QAction(QIcon(':/plugin_logo'), 'Shipwreck Seeker', self.iface.mainWindow())
-        action.triggered.connect(self.run_widget)
+        action.triggered.connect(self.run_shipseeker_widget)
+        action.setStatusTip('Quick information on your plugin.')
+        self.main_menu.addAction(action)
+
+        # add another action button to raster menu
+        action = QAction(QIcon(':/plugin_logo'), 'Threshold Model Output', self.iface.mainWindow())
+        action.triggered.connect(self.run_thresholding_widget)
         action.setStatusTip('Quick information on your plugin.')
         self.main_menu.addAction(action)
 
@@ -74,7 +81,13 @@ class ShipwreckSeeker:
         QgsApplication.processingRegistry().removeProvider(self.provider)
 
     @staticmethod
-    def run_widget():
+    def run_shipseeker_widget():
         widget = MyWidget()
+        widget.show()
+        widget.exec_()
+
+    @staticmethod
+    def run_thresholding_widget():
+        widget = ThresholdingWidget()
         widget.show()
         widget.exec_()

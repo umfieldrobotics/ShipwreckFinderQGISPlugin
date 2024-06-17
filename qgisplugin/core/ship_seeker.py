@@ -43,10 +43,12 @@ class ShipSeeker:
         src_crs = projection_str.strip('[]')
 
         print("Translating between", src_crs, "to", "EPSG:4326")
+
+        print(xmin, xmax, ymin, ymax)
         gdal_translate_options = gdal.TranslateOptions(
                                     projWin=[xmin, ymax, xmax, ymin],
                                     projWinSRS=src_crs,
-                                    outputSRS=None,
+                                    outputSRS="EPSG:4326",
                                     format="GTiff"
                                 )
         

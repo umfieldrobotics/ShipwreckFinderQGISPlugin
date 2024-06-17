@@ -1,0 +1,345 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+  <class>QDialog</class>
+  <widget class="QDialog" name="QDialog">
+    <property name="geometry">
+      <rect>
+        <x>0</x>
+        <y>0</y>
+        <width>579</width>
+        <height>464</height>
+      </rect>
+    </property>
+    <property name="font">
+      <font>
+        <pointsize>10</pointsize>
+      </font>
+    </property>
+    <property name="windowTitle">
+      <string>Thresholding Widget</string>
+    </property>
+    <property name="toolTip">
+      <string/>
+    </property>
+    <property name="toolTipDuration">
+      <number>-1</number>
+    </property>
+    <property name="statusTip">
+      <string/>
+    </property>
+    <property name="whatsThis">
+      <string/>
+    </property>
+    <property name="accessibleName">
+      <string/>
+    </property>
+    <property name="accessibleDescription">
+      <string/>
+    </property>
+    <property name="locale">
+      <locale language="English" country="UnitedKingdom"/>
+    </property>
+    <property name="windowFilePath">
+      <string/>
+    </property>
+    <property name="sizeGripEnabled">
+      <bool>false</bool>
+    </property>
+    <property name="modal">
+      <bool>false</bool>
+    </property>
+    <layout class="QVBoxLayout" name="verticalLayout">
+      <property name="spacing">
+        <number>6</number>
+      </property>
+      <item>
+        <widget class="QScrollArea" name="scrollArea">
+          <property name="styleSheet">
+            <string notr="true"/>
+          </property>
+          <property name="frameShape">
+            <enum>QFrame::NoFrame</enum>
+          </property>
+          <property name="frameShadow">
+            <enum>QFrame::Sunken</enum>
+          </property>
+          <property name="widgetResizable">
+            <bool>true</bool>
+          </property>
+          <widget class="QWidget" name="scrollAreaContent">
+            <property name="geometry">
+              <rect>
+                <x>0</x>
+                <y>0</y>
+                <width>557</width>
+                <height>371</height>
+              </rect>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_2">
+              <property name="spacing">
+                <number>0</number>
+              </property>
+              <property name="leftMargin">
+                <number>0</number>
+              </property>
+              <property name="topMargin">
+                <number>0</number>
+              </property>
+              <property name="rightMargin">
+                <number>0</number>
+              </property>
+              <property name="bottomMargin">
+                <number>0</number>
+              </property>
+              <item>
+                <widget class="QTabWidget" name="tabWidget">
+                  <property name="font">
+                    <font>
+                      <pointsize>10</pointsize>
+                    </font>
+                  </property>
+                  <property name="currentIndex">
+                    <number>0</number>
+                  </property>
+                  <widget class="QWidget" name="tab">
+                    <attribute name="title">
+                      <string>Parameters</string>
+                    </attribute>
+                    <layout class="QVBoxLayout" name="verticalLayout_3">
+                      <!-- Input Raster Selection -->
+                      <item>
+                        <widget class="QLabel" name="label_3">
+                          <property name="font">
+                            <font>
+                              <pointsize>10</pointsize>
+                            </font>
+                          </property>
+                          <property name="text">
+                            <string>Select segmentation model data products</string>
+                          </property>
+                        </widget>
+                      </item>
+                      <item>
+                        <layout class="QHBoxLayout" name="horizontalLayout_3">
+                          <item>
+                            <widget class="QgsFileWidget" name="numpy_file_widget" native="true">
+                              <property name="filter" stdset="0">
+                                <string>Numpy Files (*.npy)</string>
+                              </property>
+                            </widget>
+                          </item>
+                        </layout>
+                      </item>
+
+                      <!-- Output wwidgits -->
+                      <item>
+                        <widget class="QLabel" name="label_2">
+                          <property name="font">
+                            <font>
+                              <pointsize>10</pointsize>
+                            </font>
+                          </property>
+                          <property name="text">
+                            <string>Output</string>
+                          </property>
+                        </widget>
+                      </item>
+                      <item>
+                        <widget class="QgsFileWidget" name="outputFileWidget" native="true">
+                          <property name="filter" stdset="0">
+                            <string/>
+                          </property>
+                        </widget>
+                      </item>
+                      <!-- <item>
+                        <widget class="QCheckBox" name="openCheckBox">
+                          <property name="font">
+                            <font>
+                              <pointsize>10</pointsize>
+                            </font>
+                          </property>
+                          <property name="text">
+                            <string>Open result in QGIS</string>
+                          </property>
+                          <property name="checked">
+                            <bool>true</bool>
+                          </property>
+                        </widget>
+                      </item> -->
+
+                      <item>
+                        <widget class="QLabel" name="imageLabel">
+                          <property name="minimumSize">
+                            <size>
+                              <width>200</width>
+                              <height>200</height>
+                            </size>
+                          </property>
+                          <property name="sizePolicy">
+                            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                              <horstretch>0</horstretch>
+                              <verstretch>0</verstretch>
+                            </sizepolicy>
+                          </property>
+                          <property name="scaledContents">
+                            <bool>false</bool>
+                          </property>
+                          <property name="alignment">
+                            <set>Qt::AlignCenter</set>
+                          </property>
+                        </widget>
+                      </item>
+
+                      <item>
+                        <layout class="QHBoxLayout" name="horizontalLayout_slider">
+                          <item>
+                            <widget class="QLabel" name="label_3">
+                              <property name="font">
+                                <font>
+                                  <pointsize>10</pointsize>
+                                </font>
+                              </property>
+                              <property name="text">
+                                <string>Threshold:</string>
+                              </property>
+                            </widget>
+                          </item>
+                          <item>
+                            <widget class="QSlider" name="percentageSlider">
+                              <property name="orientation">
+                                <enum>Qt::Horizontal</enum>
+                              </property>
+                              <property name="minimum">
+                                <number>0</number>
+                              </property>
+                              <property name="maximum">
+                                <number>100</number>
+                              </property>
+                              <property name="value">
+                                <number>50</number>
+                              </property>
+                            </widget>
+                          </item>
+                          <item>
+                            <widget class="QLineEdit" name="percentageDisplay">
+                              <property name="readOnly">
+                                <bool>true</bool>
+                              </property>
+                              <property name="text">
+                                <string>50%</string>
+                              </property>
+                              <property name="alignment">
+                                <set>Qt::AlignCenter</set>
+                              </property>
+                              <property name="fixedWidth">
+                                <number>80</number>
+                              </property>
+                            </widget>
+                          </item>
+                        </layout>
+                      </item>
+
+                      <item>
+                        <widget class="QLabel" name="success_label">
+                            <property name="font">
+                                <font>
+                                    <pointsize>10</pointsize>
+                                </font>
+                            </property>
+                            <property name="text">
+                                <string>Image Saved Successfully!!!</string>
+                            </property>
+                            <property name="alignment">
+                                <set>Qt::AlignCenter</set>
+                            </property>
+                            <property name="styleSheet">
+                                <string>* { color: green; }</string>
+                            </property>
+                        </widget>
+                    </item>
+
+
+                      <item>
+                        <spacer name="verticalSpacer">
+                          <property name="orientation">
+                            <enum>Qt::Vertical</enum>
+                          </property>
+                          <property name="sizeHint" stdset="0">
+                            <size>
+                              <width>20</width>
+                              <height>40</height>
+                            </size>
+                          </property>
+                        </spacer>
+                      </item>
+                    </layout>
+                  </widget>
+                  <widget class="QWidget" name="tab_log">
+                    <attribute name="title">
+                      <string>Log</string>
+                    </attribute>
+                    <layout class="QVBoxLayout" name="verticalLayout_4">
+                      <item>
+                        <widget class="QTextBrowser" name="logBrowser"/>
+                      </item>
+                    </layout>
+                  </widget>
+                </widget>
+              </item>
+            </layout>
+          </widget>
+        </widget>
+      </item>
+      <!-- <item>
+        <widget class="QProgressBar" name="progressBar">
+          <property name="value">
+            <number>0</number>
+          </property>
+        </widget>
+      </item>
+      <item>
+        <widget class="QDialogButtonBox" name="OKClose">
+          <property name="standardButtons">
+            <set>QDialogButtonBox::Close|QDialogButtonBox::Ok</set>
+          </property>
+        </widget>
+      </item> -->
+
+    </layout>
+    <action name="imageAction">
+      <property name="icon">
+        <iconset>
+          <normaloff>:/images/themes/default/mActionAddRasterLayer.svg</normaloff>:/images/themes/default/mActionAddRasterLayer.svg</iconset>
+      </property>
+      <property name="text">
+        <string>...</string>
+      </property>
+      <property name="iconText">
+        <string>Browse</string>
+      </property>
+      <property name="toolTip">
+        <string>Browse for a raster layer</string>
+      </property>
+    </action>
+  </widget>
+  <customwidgets>
+    <customwidget>
+      <class>QgsCollapsibleGroupBox</class>
+      <extends>QGroupBox</extends>
+      <header>qgscollapsiblegroupbox.h</header>
+      <container>1</container>
+    </customwidget>
+    <customwidget>
+      <class>QgsFileWidget</class>
+      <extends>QWidget</extends>
+      <header>qgsfilewidget.h</header>
+    </customwidget>
+    <customwidget>
+      <class>QgsMapLayerComboBox</class>
+      <extends>QComboBox</extends>
+      <header>qgsmaplayercombobox.h</header>
+    </customwidget>
+  </customwidgets>
+  <resources/>
+  <connections/>
+</ui>
