@@ -53,14 +53,18 @@ from qgisplugin.interfaces import import_image, write_image
 from qgisplugin.interfaces.RectangleMapTool import RectangleMapTool
 
 import matplotlib.pyplot as plt
+from scipy.special import softmax
 
 class Drewpers:
     def __init__(self, npy_pred):
-        self.npy_pred = npy_pred
+        print("Here is the new softmax images of shape", npy_pred.shape)
+        self.probabilities = softmax(npy_pred, axis=1)
+        print(self.probabilities[0, :10, :10])
 
     def get_thresholded_image(self, thresh_value):
-        pred_binary = (self.npy_pred > thresh_value).astype(np.uint8)
-        pred_binary = pred_binary.argmax(axis=1)
+        print("Here is the thresholding: ", self.probabilities[:, 1, :, :])
+        pred_binary = (self.probabilities[:, 1, :, :] > thresh_value).astype(np.uint8)
+        print("And now the shape is", pred_binary.shape)
         return pred_binary
 
 
@@ -95,7 +99,7 @@ class ThresholdingWidget(QDialog):
         super(ThresholdingWidget, self).__init__()
         loadUi(op.join(op.dirname(__file__), 'thresholding_gui.ui'), self)
 
-        self.thresholder = Drewpers(np.zeros(5))
+        self.thresholder = None
 
         self.numpy_file_widget.lineEdit().setPlaceholderText(f"Input raw segmentation model predictions (*.npy)")
 
