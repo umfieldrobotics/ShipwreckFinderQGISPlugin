@@ -57,40 +57,13 @@ from scipy.special import softmax
 
 class Drewpers:
     def __init__(self, npy_pred):
-        print("Here is the new softmax images of shape", npy_pred.shape)
         self.probabilities = softmax(npy_pred, axis=1)
         print(self.probabilities[0, :10, :10])
 
     def get_thresholded_image(self, thresh_value):
-        print("Here is the thresholding: ", self.probabilities[:, 1, :, :])
         pred_binary = (self.probabilities[:, 1, :, :] > thresh_value).astype(np.uint8)
-        print("And now the shape is", pred_binary.shape)
         return pred_binary
 
-
-# class LayerSelectionDialog(QDialog):
-
-#     def __init__(self, parent=None):
-#         super().__init__(parent)
-#         self.setWindowTitle(self.tr('Select Extent'))
-
-#         vl = QVBoxLayout()
-#         vl.addWidget(QLabel(self.tr('Use extent from')))
-#         self.combo = QgsMapLayerComboBox()
-#         self.combo.setFilters(
-#             Qgis.LayerFilter.HasGeometry | Qgis.LayerFilter.RasterLayer | Qgis.LayerFilter.MeshLayer)
-#         vl.addWidget(self.combo)
-
-#         self.button_box = QDialogButtonBox()
-#         self.button_box.setStandardButtons(QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok)
-#         self.button_box.accepted.connect(self.accept)
-#         self.button_box.rejected.connect(self.reject)
-
-#         vl.addWidget(self.button_box)
-#         self.setLayout(vl)
-
-#     def selected_layer(self):
-#         return self.combo.currentLayer()
 
 class ThresholdingWidget(QDialog):
     """ QDialog to interactively set up the Neural Network input and output. """

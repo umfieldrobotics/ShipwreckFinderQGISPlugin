@@ -117,13 +117,32 @@ def create_chunks(input_path, output_dir, chunk_size=501):
     # Close original dataset
     dataset = None
 
-def merge_chunks(output_dir, output_path):
-    # Get a list of chunk files
-    chunk_files = [os.path.join(output_dir, f) for f in os.listdir(output_dir) if "pred" in f]
-    
-    # Use gdal_merge.py script to merge the chunks
-    gdal_merge_cmd = f"gdal_merge.py -o {output_path} " + " ".join(chunk_files)
+    return y_chunks, x_chunks # rows, cols
+
+def merge_chunks(output_dir, rows, cols, output_path, save_model_output):
+    # Merge the tiff files
+    chunk_tiff_files = [os.path.join(output_dir, f) for f in os.listdir(output_dir) if "_pred.tiff" in f]
+    gdal_merge_cmd = f"gdal_merge.py -o {output_path} " + " ".join(chunk_tiff_files)
     os.system(gdal_merge_cmd)
+
+    if save_model_output:
+        # Merge the npy files
+        chunk_npy_files = [os.path.join(output_dir, f) for f in os.listdir(output_dir) if "_pred.npy" in f]
+        chunk_shape = np.load(chunk_npy_files[0]).shape
+        final_image_shape = (chunk_shape[0], chunk_shape[1], rows*chunk_shape[2], cols*chunk_shape[3])  # rows, cols
+        final_image = np.zeros(final_image_shape)
+
+        for r in range(rows):
+            for c in range(cols):
+                chunk_file_name = [filename for filename in chunk_npy_files if f'{c}_{r}_pred.npy' in filename][0]
+                chunk_arr = np.load(chunk_file_name)
+                
+                start_row = chunk_shape[2]*r
+                start_col = chunk_shape[3]*c
+                final_image[:, :, start_row:start_row+chunk_shape[2], start_col:start_col+chunk_shape[3]] = chunk_arr
+        
+        npy_output_path = os.path.splitext(output_path)[0] + ".npy"
+        np.save(npy_output_path, final_image)
 
 def get_tiff_size(tiff_path):
     dataset = gdal.Open(tiff_path)

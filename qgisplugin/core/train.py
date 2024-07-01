@@ -137,11 +137,13 @@ def test(test_files, weight_path):
     model #.cuda()
 
 
-    output_file_names = []
+    output_tiff_file_names = []
+    output_numpy_file_names = []
 
     #read all the images using PIL 
     for test_file in test_files:
         image = Image.open(test_file)#np.load(test_file)
+        output_file_name = test_file.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
 
         #convert colormap from jet to grayscale using plt 
         # image = np.array(image)
@@ -151,7 +153,7 @@ def test(test_files, weight_path):
         image = image.resize((501, 501))
 
         og_image = np.array(image)
-        gray_image = np.dot(og_image[..., :3], [0.2989, 0.5870, 0.1140])
+        gray_image = np.dot(og_image[..., :3], [0.2989, 0.5870, 0.1140]) #TODO: What are these magic numbers
         image = gray_image
         #normalize the image using the mean and std 
         image = (image - image.mean())/image.std()
@@ -161,6 +163,13 @@ def test(test_files, weight_path):
 
         #run the model on the image 
         pred = model(image)
+
+        # Save the non-thresholded image to npy array
+        pred_numpy = pred.detach().cpu().numpy()
+        pred_numpy_filename = os.path.splitext(output_file_name)[0] + ".npy"
+        np.save(pred_numpy_filename, pred_numpy)
+        output_numpy_file_names.append(pred_numpy_filename)
+
         pred = pred.argmax(dim=1)
         pred = pred.cpu().detach().numpy()
         pred = np.expand_dims(pred, axis=0)
@@ -174,12 +183,11 @@ def test(test_files, weight_path):
         # plt.imshow(pred_mask)
 
         #save the image to the same directory 
-
-        output_file_name = test_file.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
         plt.imsave(output_file_name, pred, cmap="jet")
-        output_file_names.append(output_file_name)
+        output_tiff_file_names.append(output_file_name)
+        
 
-    return output_file_names
+    return output_tiff_file_names, output_numpy_file_names
 
 def main(): 
     # train("./", 1000, 1e-4)

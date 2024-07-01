@@ -63,7 +63,7 @@ class ShipSeeker:
         self.raster_layer = raster_layer
         self.extent_str = extent_str
 
-    def execute(self, output_path, set_progress: callable = None,
+    def execute(self, output_path, save_model_output = False, set_progress: callable = None,
                 log: callable = print):
         """
         The core of the plugin
@@ -86,7 +86,7 @@ class ShipSeeker:
         width, height = get_tiff_size(cropped_path)
         
         # Create cropped images in /temp_chunks/
-        create_chunks(cropped_path, temp_dir)
+        rows, cols = create_chunks(cropped_path, temp_dir)
         os.remove(geotiff_path)
         os.remove(cropped_path)
 
@@ -94,15 +94,15 @@ class ShipSeeker:
 
         # Copy metadata to model output
         for i, input_file_path in enumerate(input_files):
-            output_file_path = test([input_file_path], WEIGHTS_PATH)[0]
+            output_tiff_file_path = test([input_file_path], WEIGHTS_PATH)[0][0]
 
-            merge_transparent_parts(input_file_path, output_file_path, output_file_path)
-            copy_tiff_metadata(input_file_path, output_file_path)
+            merge_transparent_parts(input_file_path, output_tiff_file_path, output_tiff_file_path)
+            copy_tiff_metadata(input_file_path, output_tiff_file_path)
 
             set_progress(int(100.0*i/len(input_files)))
 
         # Merge the chunks
-        merge_chunks(temp_dir, output_path)
+        merge_chunks(temp_dir, rows, cols, output_path, save_model_output)
         crop_tiff(output_path, output_path, width, height)
 
         # Clean up all of the chunks

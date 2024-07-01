@@ -105,6 +105,7 @@ class MyWidget(QDialog):
         self.outputFileWidget.lineEdit().setPlaceholderText(f"Output tiff file path...")
         self.outputFileWidget.setStorageMode(QgsFileWidget.SaveFile)
         self.outputFileWidget.setFilter("Tiff (*.tif);;All (*.*)")
+        self.outputFileWidget.fileChanged.connect(self.on_output_file_selected)
 
         # Open in QGIS?
         try:
@@ -112,6 +113,9 @@ class MyWidget(QDialog):
         except AttributeError:
             self.openCheckBox.setChecked(False)
             self.openCheckBox.setDisabled(True)
+
+        # Save model output?
+        self.savePredictionCheckBox.setChecked(False)
 
         # run or cancel
         self.OKClose.button(QDialogButtonBox.Ok).setText("Run")
@@ -121,6 +125,14 @@ class MyWidget(QDialog):
         # widget variables
         self.image = None
         self.classified = None
+
+    def on_output_file_selected(self):
+        output_tiff_path = self.outputFileWidget.filePath()
+
+        output_npy_path = op.splitext(output_tiff_path)[0] + ".npy"
+
+        self.savePredictionCheckBox.setText(f"Save model prediction array ({output_npy_path})")
+
 
     def setExtentValueFromRect(self, r):
         s = '{},{},{},{}'.format(
@@ -236,11 +248,11 @@ class MyWidget(QDialog):
             image, metadata = import_image(image_path)
 
             extent_str = self.extentText.text()
-            print("Just got the text...")
 
             # run code
             result = ShipSeeker(raster_layer=raster_layer, extent_str=extent_str)\
-                .execute(output_path, set_progress=self.progressBar.setValue, log=self.log)
+                .execute(output_path, save_model_output=self.savePredictionCheckBox.isChecked(), \
+                         set_progress=self.progressBar.setValue, log=self.log)
 
             self.progressBar.setValue(100)
 
