@@ -4,7 +4,7 @@ import os
 import glob
 import numpy as np
 from osgeo import gdal
-from qgisplugin.core.tiff_utils import crop_tiff, create_chunks, merge_chunks, get_tiff_size, merge_transparent_parts, copy_tiff_metadata
+from qgisplugin.core.tiff_utils import crop_tiff, create_chunks, merge_chunks, get_tiff_size, merge_transparent_parts, copy_tiff_metadata, linear_interpolate_transparent
 from qgisplugin.core.train import test
 
 
@@ -74,7 +74,6 @@ class ShipSeeker:
         os.makedirs(temp_dir, exist_ok=True)
         set_progress(1)
 
-
         # Export the raster as a geotiff
         geotiff_path = os.path.join(temp_dir, "exported_geotiff.tif")
         export_raster_as_geotiff(self.raster_layer, geotiff_path)
@@ -83,32 +82,43 @@ class ShipSeeker:
         cropped_path = os.path.join(temp_dir, "cropped_geotiff.tif")
         self.crop_image_using_extent(geotiff_path, self.extent_str, cropped_path) # Todo, use this instead
 
-        width, height = get_tiff_size(cropped_path)
+
+        # TODO: Just Testing...
+        interpolated_path = os.path.join(temp_dir, "cropped_interpolated_geotiff.tif")
+        linear_interpolate_transparent(cropped_path, interpolated_path)
+
+        width, height = get_tiff_size(interpolated_path)
         
         # Create cropped images in /temp_chunks/
-        rows, cols = create_chunks(cropped_path, temp_dir)
-        os.remove(geotiff_path)
-        os.remove(cropped_path)
+        rows, cols = create_chunks(interpolated_path, temp_dir)
+        ignore_images = [cropped_path, interpolated_path, geotiff_path]
 
         input_files = glob.glob(os.path.join(temp_dir, "*"))
 
         # Copy metadata to model output
         for i, input_file_path in enumerate(input_files):
+            if input_file_path in ignore_images:
+                continue
+
             output_tiff_file_path = test([input_file_path], WEIGHTS_PATH)[0][0]
 
-            merge_transparent_parts(input_file_path, output_tiff_file_path, output_tiff_file_path)
+            
             copy_tiff_metadata(input_file_path, output_tiff_file_path)
 
             set_progress(int(100.0*i/len(input_files)))
+
 
         # Merge the chunks
         merge_chunks(temp_dir, rows, cols, output_path, save_model_output)
         crop_tiff(output_path, output_path, width, height)
 
-        # Clean up all of the chunks
-        for f in os.listdir(temp_dir):
-            os.remove(os.path.join(temp_dir, f))
-        os.rmdir(temp_dir)
+        merge_transparent_parts(cropped_path, output_path, output_path)
+        copy_tiff_metadata(cropped_path, output_path)
+
+        # # Clean up all of the chunks
+        # for f in os.listdir(temp_dir):
+        #     os.remove(os.path.join(temp_dir, f))
+        # os.rmdir(temp_dir)
 
 def printProgress(value: int):
     """ Replacement for the GUI progress bar """

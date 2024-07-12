@@ -2,6 +2,7 @@ import os
 import math
 import numpy as np
 from PIL import Image
+import cv2
 
 from osgeo import gdal, gdalconst
 
@@ -183,6 +184,42 @@ def merge_transparent_parts(image1_path, image2_path, output_path):
 
     # Save the resulting image
     image2.save(output_path, format='TIFF')
+
+def linear_interpolate_transparent(input_tiff_path, output_tiff_path):
+    dataset = gdal.Open(input_tiff_path, gdal.GA_ReadOnly)
+    
+    # Read the image bands
+    bands = [dataset.GetRasterBand(i+1).ReadAsArray() for i in range(dataset.RasterCount)]
+
+    
+    # Separate the alpha channel (assuming it is the last band)
+    alpha_channel = bands[-1]
+    image = np.dstack(bands[:-1])
+    
+    # Create a mask where alpha is 0
+    mask = (alpha_channel == 0)
+    
+    # Fill the mask with nearest neighboring pixels
+    inpainted_image = cv2.inpaint(image, mask.astype(np.uint8), 3, cv2.INPAINT_NS)
+    alpha_channel[mask] = 255
+    
+    # Combine the inpainted image with the alpha channel
+    result_image = np.dstack((*cv2.split(inpainted_image), alpha_channel))
+    
+    # Save the result as a new GeoTIFF
+    driver = gdal.GetDriverByName("GTiff")
+    out_dataset = driver.Create(output_tiff_path, dataset.RasterXSize, dataset.RasterYSize, result_image.shape[2], gdal.GDT_Byte)
+    
+    for i in range(result_image.shape[2]):
+        out_band = out_dataset.GetRasterBand(i+1)
+        out_band.WriteArray(result_image[:,:,i])
+    
+    # Copy georeference info
+    out_dataset.SetGeoTransform(dataset.GetGeoTransform())
+    out_dataset.SetProjection(dataset.GetProjection())
+    
+    out_dataset.FlushCache()
+    del out_dataset
 
 def copy_tiff_metadata(input_file_path, output_file_path):
     tif_with_RPCs = gdal.Open(input_file_path, gdalconst.GA_ReadOnly)

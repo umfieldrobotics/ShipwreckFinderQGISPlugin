@@ -4,3 +4,4 @@ torchvision
 tqdm
 matplotlib
 wandb
+opencv-python

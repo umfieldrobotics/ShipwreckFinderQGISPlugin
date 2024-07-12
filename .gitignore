@@ -1,4 +1,5 @@
 qgisplugin/core/mbes_unet.pt
+*.tif*
 
 # do not store compiled qt resource files
 *_rc.py
