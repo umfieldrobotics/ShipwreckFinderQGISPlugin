@@ -6,10 +6,13 @@ import numpy as np
 from osgeo import gdal
 from qgisplugin.core.tiff_utils import crop_tiff, create_chunks, merge_chunks, get_tiff_size, merge_transparent_parts, copy_tiff_metadata, linear_interpolate_transparent
 from qgisplugin.core.train import test
+from qgisplugin.core.RasterChunkHandler import RasterChunkHandler
 
 
-from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject, QgsPointXY
+from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject, QgsPointXY, QgsRasterLayer, QgsRectangle
+# from qgis.core import Qgis, QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer, QgsProject, QgsReferencedRectangle
 from osgeo import gdal, osr
+
 
 import random
 
@@ -63,6 +66,49 @@ class ShipSeeker:
         self.raster_layer = raster_layer
         self.extent_str = extent_str
 
+    # def load_raster_by_band_name(self, band_str="elevation", chunk_size=1024):
+
+    #     band_index = None
+    #     for i in range(1, self.raster_layer.bandCount() + 1):
+    #         full_band_name = self.raster_layer.bandName(i)
+    #         if band_str in full_band_name:
+    #             band_index = i
+    #             break
+
+    #     if band_index is None:
+    #         raise ValueError(f"No band named '{band_str}' found in the raster")
+
+    #     gdal_dataset = gdal.Open(self.raster_layer.dataProvider().dataSourceUri())
+    
+    #     if not gdal_dataset:
+    #         raise ValueError("Unable to open raster data source")
+
+    #     # Get raster dimensions
+    #     width = gdal_dataset.RasterXSize
+    #     height = gdal_dataset.RasterYSize
+
+    #     # Initialize an empty list to store chunks
+    #     all_chunks = []
+    #     band = gdal_dataset.GetRasterBand(band_index)
+        
+    #     for i in range(0, height, chunk_size):
+    #         for j in range(0, width, chunk_size):
+    #             # Define the size of the chunk
+    #             xoff = j
+    #             yoff = i
+    #             xsize = min(chunk_size, width - j)
+    #             ysize = min(chunk_size, height - i)
+                
+    #             # Read the chunk into a numpy array
+    #             chunk = band.ReadAsArray(xoff, yoff, xsize, ysize)
+    #             all_chunks.append(chunk)
+        
+    #     # Stack all chunks into a single numpy array
+    #     # Assume chunks are read row-wise and stacked vertically
+    #     numpy_array = np.vstack([np.hstack(row) for row in zip(*[iter(all_chunks)]*((width + chunk_size - 1) // chunk_size))])
+        
+    #     return numpy_array
+
     def execute(self, output_path, save_model_output = False, set_progress: callable = None,
                 log: callable = print):
         """
@@ -73,6 +119,22 @@ class ShipSeeker:
         temp_dir = os.path.join(os.path.dirname(output_path), "temp_chunks")
         os.makedirs(temp_dir, exist_ok=True)
         set_progress(1)
+
+        
+
+        # # Print out the numpy array to determine 
+        # print("This is the number of bands: ", self.raster_layer.bandCount())
+        # elevation_arr = self.load_raster_by_band_name("elevation")
+        # print("Size is ", elevation_arr.size)
+        # print("min and max ", np.min(elevation_arr), np.max(elevation_arr))
+        chunker = RasterChunkHandler(self.raster_layer.dataProvider().dataSourceUri(), 501)
+        print("Chunker size is ", chunker.get_chunk_as_np_arr(0, 0).size)
+        print("Chunker arr is ", chunker.get_chunk_as_np_arr(0, 0))
+        arr = chunker.get_chunk_as_np_arr(0, 0)
+        print("Min in this chunk is ", np.min(arr))
+        print("max in this chunk is ", np.max(arr))
+        print("Chunker size x is ", chunker.get_num_x_chunks())
+        print("Chunker size y is ", chunker.get_num_y_chunks())
 
         # Export the raster as a geotiff
         geotiff_path = os.path.join(temp_dir, "exported_geotiff.tif")

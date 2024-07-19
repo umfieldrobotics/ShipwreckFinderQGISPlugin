@@ -244,8 +244,8 @@ class MyWidget(QDialog):
             # Get parameters
             raster_layer = self.imageDropDown.currentLayer()
 
-            image_path = self.imageDropDown.currentLayer().source()
-            image, metadata = import_image(image_path)
+            # image_path = self.imageDropDown.currentLayer().source()
+            # image, metadata = import_image(image_path)
 
             extent_str = self.extentText.text()
 
