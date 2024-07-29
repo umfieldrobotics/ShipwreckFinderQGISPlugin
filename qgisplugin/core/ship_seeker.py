@@ -6,8 +6,6 @@ import numpy as np
 from osgeo import gdal
 from qgisplugin.core.tiff_utils import crop_tiff, create_chunks, merge_chunks, get_tiff_size, merge_transparent_parts, copy_tiff_metadata, linear_interpolate_transparent
 from qgisplugin.core.train import test
-from qgisplugin.core.RasterChunkHandler import RasterChunkHandler
-
 
 from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject, QgsPointXY, QgsRasterLayer, QgsRectangle
 # from qgis.core import Qgis, QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer, QgsProject, QgsReferencedRectangle
@@ -76,50 +74,6 @@ class ShipSeeker:
     def __del__(self):
         if self.remove_tmp:
             shutil.rmtree(self.temp_dir)
-
-
-    # def load_raster_by_band_name(self, band_str="elevation", chunk_size=1024):
-
-    #     band_index = None
-    #     for i in range(1, self.raster_layer.bandCount() + 1):
-    #         full_band_name = self.raster_layer.bandName(i)
-    #         if band_str in full_band_name:
-    #             band_index = i
-    #             break
-
-    #     if band_index is None:
-    #         raise ValueError(f"No band named '{band_str}' found in the raster")
-
-    #     gdal_dataset = gdal.Open(self.raster_layer.dataProvider().dataSourceUri())
-    
-    #     if not gdal_dataset:
-    #         raise ValueError("Unable to open raster data source")
-
-    #     # Get raster dimensions
-    #     width = gdal_dataset.RasterXSize
-    #     height = gdal_dataset.RasterYSize
-
-    #     # Initialize an empty list to store chunks
-    #     all_chunks = []
-    #     band = gdal_dataset.GetRasterBand(band_index)
-        
-    #     for i in range(0, height, chunk_size):
-    #         for j in range(0, width, chunk_size):
-    #             # Define the size of the chunk
-    #             xoff = j
-    #             yoff = i
-    #             xsize = min(chunk_size, width - j)
-    #             ysize = min(chunk_size, height - i)
-                
-    #             # Read the chunk into a numpy array
-    #             chunk = band.ReadAsArray(xoff, yoff, xsize, ysize)
-    #             all_chunks.append(chunk)
-        
-    #     # Stack all chunks into a single numpy array
-    #     # Assume chunks are read row-wise and stacked vertically
-    #     numpy_array = np.vstack([np.hstack(row) for row in zip(*[iter(all_chunks)]*((width + chunk_size - 1) // chunk_size))])
-        
-    #     return numpy_array
 
     def execute(self, output_path, save_model_output = False, set_progress: callable = None,
                 log: callable = print):
