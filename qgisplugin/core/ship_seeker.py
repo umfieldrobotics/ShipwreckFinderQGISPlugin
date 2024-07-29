@@ -69,7 +69,9 @@ class ShipSeeker:
 
         self.remove_tmp = True
         self.temp_dir = os.path.join("/tmp", "SHIPWRECK_SEEKER", "temp_chunks")
-        os.makedirs(self.temp_dir, exist_ok=True)
+        shutil.rmtree(self.temp_dir)
+
+        os.makedirs(self.temp_dir, exist_ok=False)
 
     def __del__(self):
         if self.remove_tmp:
