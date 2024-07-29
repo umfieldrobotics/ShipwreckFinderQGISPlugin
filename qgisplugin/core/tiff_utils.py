@@ -193,18 +193,21 @@ def linear_interpolate_transparent(input_tiff_path, output_tiff_path):
 
     
     # Separate the alpha channel (assuming it is the last band)
-    alpha_channel = bands[-1]
-    image = np.dstack(bands[:-1])
-    
-    # Create a mask where alpha is 0
-    mask = (alpha_channel == 0)
-    
-    # Fill the mask with nearest neighboring pixels
-    inpainted_image = cv2.inpaint(image, mask.astype(np.uint8), 3, cv2.INPAINT_NS)
-    alpha_channel[mask] = 255
-    
-    # Combine the inpainted image with the alpha channel
-    result_image = np.dstack((*cv2.split(inpainted_image), alpha_channel))
+    if len(bands) == 4:
+        alpha_channel = bands[-1]
+        image = np.dstack(bands[:-1])
+        
+        # Create a mask where alpha is 0
+        mask = (alpha_channel == 0)
+        
+        # Fill the mask with nearest neighboring pixels
+        inpainted_image = cv2.inpaint(image, mask.astype(np.uint8), 3, cv2.INPAINT_NS)
+        alpha_channel[mask] = 255
+        
+        # Combine the inpainted image with the alpha channel
+        result_image = np.dstack((*cv2.split(inpainted_image), alpha_channel))
+    else:
+        result_image = np.dstack(bands)
     
     # Save the result as a new GeoTIFF
     driver = gdal.GetDriverByName("GTiff")
@@ -222,6 +225,8 @@ def linear_interpolate_transparent(input_tiff_path, output_tiff_path):
     del out_dataset
 
 def copy_tiff_metadata(input_file_path, output_file_path):
+    '''Copies GeoTiff metadata from input_file_path to output_file_path'''
+
     tif_with_RPCs = gdal.Open(input_file_path, gdalconst.GA_ReadOnly)
     tif_without_RPCs = gdal.Open(output_file_path,gdalconst.GA_Update)
     

@@ -34,56 +34,59 @@ from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QDialogButtonBox
 from qgis.PyQt.QtCore import Qt
 
 from qgis.PyQt.QtWidgets import (
-    QMenu,
-    QAction,
     QDialog,
-    QVBoxLayout,
     QDialogButtonBox,
-    QLabel,
-    QApplication,
-    QPushButton
 )
-from qgis.PyQt.QtCore import QCoreApplication, pyqtSignal
-from qgis.PyQt.QtGui import QCursor
 from qgis.PyQt.QtGui import QPixmap
 
+from qgisplugin.core.preprocessing_handler import PreprocessingHandler
+from qgisplugin.core.tiff_utils import copy_tiff_metadata
 
-from qgisplugin.core.ship_seeker import ShipSeeker
-from qgisplugin.interfaces import import_image, write_image
-from qgisplugin.interfaces.RectangleMapTool import RectangleMapTool
 
 import matplotlib.pyplot as plt
-from scipy.special import softmax
-
-class Drewpers:
-    def __init__(self, npy_pred):
-        self.probabilities = softmax(npy_pred, axis=1)
-        print(self.probabilities[0, :10, :10])
-
-    def get_thresholded_image(self, thresh_value):
-        pred_binary = (self.probabilities[:, 1, :, :] > thresh_value).astype(np.uint8)
-        return pred_binary
+import cv2
 
 
-class ThresholdingWidget(QDialog):
+
+class PreprocessingWidget(QDialog):
     """ QDialog to interactively set up the Neural Network input and output. """
 
     def __init__(self):
-        super(ThresholdingWidget, self).__init__()
-        loadUi(op.join(op.dirname(__file__), 'thresholding_gui.ui'), self)
+        super(PreprocessingWidget, self).__init__()
+        loadUi(op.join(op.dirname(__file__), 'preprocessing_gui.ui'), self)
+        
+        # Image Selection
+        excluded_providers = [p for p in QgsProviderRegistry.instance().providerList() if p not in ['gdal']]
+        self.imageDropDown.setExcludedProviders(excluded_providers)
+        self.imageDropDown.setFilters(QgsMapLayerProxyModel.RasterLayer)
+        self.imageDropDown.layerChanged.connect(self._choose_image)
+        self.imageAction.triggered.connect(self._browse_for_image)
+        self.imageButton.setDefaultAction(self.imageAction)
 
-        self.thresholder = None
-
-        self.numpy_file_widget.lineEdit().setPlaceholderText(f"Input raw segmentation model predictions (*.npy)")
-
+        # Output file
         self.outputFileWidget.lineEdit().setReadOnly(True)
-        self.outputFileWidget.lineEdit().setPlaceholderText(f"Output segmentation image file path (*.png)")
+        self.outputFileWidget.lineEdit().setPlaceholderText(f"Output tiff file path...")
         self.outputFileWidget.setStorageMode(QgsFileWidget.SaveFile)
-        self.outputFileWidget.setFilter("PNG (*.png);;All (*.*)")
+        self.outputFileWidget.setFilter("Tiff (*.tif);;All (*.*)")
+        self.outputFileWidget.fileChanged.connect(self.on_output_file_selected)
 
-        self.percentageSlider.valueChanged.connect(self._update_percentage_display)
+        # Run button
+        self.OKClose.button(QDialogButtonBox.Ok).setText("Run")
+        self.OKClose.accepted.connect(self._run)
+        self.OKClose.rejected.connect(self.close)
 
-        self.success_label.setText("")
+        # self.thresholder = None
+
+        # self.numpy_file_widget.lineEdit().setPlaceholderText(f"Input raw segmentation model predictions (*.npy)")
+
+        # self.outputFileWidget.lineEdit().setReadOnly(True)
+        # self.outputFileWidget.lineEdit().setPlaceholderText(f"Output segmentation image file path (*.png)")
+        # self.outputFileWidget.setStorageMode(QgsFileWidget.SaveFile)
+        # self.outputFileWidget.setFilter("PNG (*.png);;All (*.*)")
+
+        # self.percentageSlider.valueChanged.connect(self._update_percentage_display)
+
+        # self.success_label.setText("")
 
 
     def log(self, text):
@@ -91,25 +94,6 @@ class ThresholdingWidget(QDialog):
         self.logBrowser.append(str(text) + '\n')
         # open the widget on the log screen
         self.tabWidget.setCurrentIndex(self.tabWidget.indexOf(self.tab_log))
-
-    def _update_percentage_display(self, value):
-        self.percentageDisplay.setText(f'{value}%')
-
-        input_numpy_path = self.numpy_file_widget.filePath()
-        output_file_path = self.outputFileWidget.filePath()
-
-        if input_numpy_path != "" and output_file_path != "":
-            np_arr = np.load(input_numpy_path)
-
-            self.thresholder = Drewpers(np_arr)
-            pred_thresh = self.thresholder.get_thresholded_image(value/100)
-            pred_thresh = np.squeeze(pred_thresh)
-
-            plt.imsave(output_file_path, pred_thresh, cmap="jet")
-            pixmap = QPixmap(output_file_path)
-            self.imageLabel.setPixmap(pixmap.scaled(self.imageLabel.size(), aspectRatioMode=Qt.KeepAspectRatio))
-
-            self.success_label.setText(f"Image saved to {output_file_path}!")
 
 
     def _browse_for_image(self):
@@ -143,47 +127,49 @@ class ThresholdingWidget(QDialog):
 
         if layer is None:
             return
+        
+    def on_output_file_selected(self):
+        self.output_tiff_path = self.outputFileWidget.filePath()
+
 
     def _run(self):
         """ Read all parameters and pass them on to the core function. """
 
         # todo: read all parameters, throw errors when needed, give user feedback and run code
+        raster_layer = self.imageDropDown.currentLayer()
+        raster_path = raster_layer.dataProvider().dataSourceUri()
 
-        try:
-            # Only temp file possible when result is opened in QGIS
-            output_path = self.outputFileWidget.filePath()
+        output_path = self.outputFileWidget.filePath()
+        
+        # Parse the depth array
+        self.progressBar.setValue(10)
+        url = raster_path.split('|')[0]
+        options = raster_path.split('|')[1:]
+        if options:
+            options[0].replace("option:", "")
+            raster_ds = gdal.OpenEx(url, open_options=options)
+        else:
+            raster_ds = gdal.Open(url)
+        depth_band = raster_ds.GetRasterBand(1)
+        depth_array = depth_band.ReadAsArray()
+        self.progressBar.setValue(20)
 
-            if not self.openCheckBox.isChecked() and len(output_path) == 0:
-                raise Exception("If you won't open the result in QGIS, you must select a base file name for output.")
+        # Normalize the depth array
+        preprocessor = PreprocessingHandler()
+        ker_size_value = self.kernelSizeBox.value()
+        inpaint_rad_value = self.infillRadiusBox.value()
+        result_arr = preprocessor.normalize(depth_array, self.progressBar.setValue, 
+                                            kernel_size=ker_size_value, inpaint_radius=inpaint_rad_value)
+        
+        # Save the result arr to the output_path and copy over the meta data...
+        cv2.imwrite(output_path, result_arr)
+        copy_tiff_metadata(raster_path, output_path)
 
-            # Get parameters
-            raster_layer = self.imageDropDown.currentLayer()
-
-            image_path = self.imageDropDown.currentLayer().source()
-            image, metadata = import_image(image_path)
-
-            extent_str = self.extentText.text()
-            print("Just got the text...")
-
-            # run code
-            result = ShipSeeker(raster_layer=raster_layer, extent_str=extent_str)\
-                .execute(output_path, set_progress=self.progressBar.setValue, log=self.log)
-
-            self.progressBar.setValue(100)
-
-            # write image to file
-            print("THe output path will be: ", output_path)
-
-            # Open result in QGIS
-            if self.openCheckBox.isChecked():
-                output_raster_layer = QgsRasterLayer(output_path, 'New Image')
+        if self.openCheckBox.isChecked():
+                output_raster_layer = QgsRasterLayer(output_path, 'Preprocessed Raster')
                 QgsProject.instance().addMapLayer(output_raster_layer, True)
 
-        # except AttributeError:
-        #     self.log("Please select an image.")
-        except Exception as e:
-            self.log(e)
-            raise e
+        self.progressBar.setValue(100)
 
 
 def _run():
@@ -192,7 +178,7 @@ def _run():
     app = QgsApplication([], True)
     app.initQgis()
 
-    z = ThresholdingWidget()
+    z = PreprocessingWidget()
     z.show()
 
     app.exec_()

@@ -28,6 +28,7 @@ from qgis.core import QgsApplication
 # todo: import your own GUI or PROVIDER:
 from qgisplugin.interfaces.my_gui import MyWidget
 from qgisplugin.interfaces.thresholding_gui import ThresholdingWidget
+from qgisplugin.interfaces.preprocessing_gui import PreprocessingWidget
 from qgisplugin.interfaces.my_plugin_provider import MyProcessingProvider
 from qgisplugin.images.cqp_resources_rc import qInitResources
 qInitResources()  # necessary to be able to access your images
@@ -71,6 +72,12 @@ class ShipwreckSeeker:
         action.setStatusTip('Quick information on your plugin.')
         self.main_menu.addAction(action)
 
+        # add another action button to raster menu
+        action = QAction(QIcon(':/plugin_logo'), 'Preprocess Raster Layer', self.iface.mainWindow())
+        action.triggered.connect(self.run_preprocessing_widget)
+        action.setStatusTip('Quick information on your plugin.')
+        self.main_menu.addAction(action)
+
         # add provider to processing toolbox
         self.provider = MyProcessingProvider()
         QgsApplication.processingRegistry().addProvider(self.provider)
@@ -89,5 +96,11 @@ class ShipwreckSeeker:
     @staticmethod
     def run_thresholding_widget():
         widget = ThresholdingWidget()
+        widget.show()
+        widget.exec_()
+
+    @staticmethod
+    def run_preprocessing_widget():
+        widget = PreprocessingWidget()
         widget.show()
         widget.exec_()
