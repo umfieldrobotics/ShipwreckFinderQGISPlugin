@@ -15,6 +15,7 @@ from osgeo import gdal, osr
 
 
 import random
+import shutil
 
 WEIGHTS_PATH = "/home/frog/dev/ShipwreckSeekerQGISPlugin/qgisplugin/core/mbes_unet.pt"
 
@@ -66,6 +67,15 @@ class ShipSeeker:
         self.raster_layer = raster_layer
         self.extent_str = extent_str
 
+        self.remove_tmp = True
+        self.temp_dir = os.path.join("/tmp", "SHIPWRECK_SEEKER", "temp_chunks")
+        os.makedirs(self.temp_dir, exist_ok=True)
+
+    def __del__(self):
+        if self.remove_tmp:
+            shutil.rmtree(self.temp_dir)
+
+
     # def load_raster_by_band_name(self, band_str="elevation", chunk_size=1024):
 
     #     band_index = None
@@ -116,46 +126,28 @@ class ShipSeeker:
         """
 
         # Output path for chunks
-        temp_dir = os.path.join(os.path.dirname(output_path), "temp_chunks")
-        os.makedirs(temp_dir, exist_ok=True)
         set_progress(1)
 
-        
-
-        # # Print out the numpy array to determine 
-        # print("This is the number of bands: ", self.raster_layer.bandCount())
-        # elevation_arr = self.load_raster_by_band_name("elevation")
-        # print("Size is ", elevation_arr.size)
-        # print("min and max ", np.min(elevation_arr), np.max(elevation_arr))
-        chunker = RasterChunkHandler(self.raster_layer.dataProvider().dataSourceUri(), 501)
-        print("Chunker size is ", chunker.get_chunk_as_np_arr(0, 0).size)
-        print("Chunker arr is ", chunker.get_chunk_as_np_arr(0, 0))
-        arr = chunker.get_chunk_as_np_arr(0, 0)
-        print("Min in this chunk is ", np.min(arr))
-        print("max in this chunk is ", np.max(arr))
-        print("Chunker size x is ", chunker.get_num_x_chunks())
-        print("Chunker size y is ", chunker.get_num_y_chunks())
-
         # Export the raster as a geotiff
-        geotiff_path = os.path.join(temp_dir, "exported_geotiff.tif")
+        geotiff_path = os.path.join(self.temp_dir, "exported_geotiff.tif")
         export_raster_as_geotiff(self.raster_layer, geotiff_path)
 
         #Crop the image using the extent
-        cropped_path = os.path.join(temp_dir, "cropped_geotiff.tif")
+        cropped_path = os.path.join(self.temp_dir, "cropped_geotiff.tif")
         self.crop_image_using_extent(geotiff_path, self.extent_str, cropped_path) # Todo, use this instead
 
 
         # TODO: Just Testing...
-        interpolated_path = os.path.join(temp_dir, "cropped_interpolated_geotiff.tif")
+        interpolated_path = os.path.join(self.temp_dir, "cropped_interpolated_geotiff.tif")
         linear_interpolate_transparent(cropped_path, interpolated_path)
 
         width, height = get_tiff_size(interpolated_path)
         
         # Create cropped images in /temp_chunks/
-        rows, cols = create_chunks(interpolated_path, temp_dir)
+        rows, cols = create_chunks(interpolated_path, self.temp_dir)
         ignore_images = [cropped_path, interpolated_path, geotiff_path]
 
-        input_files = glob.glob(os.path.join(temp_dir, "*"))
+        input_files = glob.glob(os.path.join(self.temp_dir, "*"))
 
         # Copy metadata to model output
         for i, input_file_path in enumerate(input_files):
@@ -171,16 +163,11 @@ class ShipSeeker:
 
 
         # Merge the chunks
-        merge_chunks(temp_dir, rows, cols, output_path, save_model_output)
+        merge_chunks(self.temp_dir, rows, cols, output_path, save_model_output)
         crop_tiff(output_path, output_path, width, height)
 
         merge_transparent_parts(cropped_path, output_path, output_path)
         copy_tiff_metadata(cropped_path, output_path)
-
-        # # Clean up all of the chunks
-        # for f in os.listdir(temp_dir):
-        #     os.remove(os.path.join(temp_dir, f))
-        # os.rmdir(temp_dir)
 
 def printProgress(value: int):
     """ Replacement for the GUI progress bar """
