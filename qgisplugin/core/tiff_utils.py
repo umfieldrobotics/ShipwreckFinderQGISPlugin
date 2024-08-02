@@ -186,14 +186,17 @@ def merge_transparent_parts(image1_path, image2_path, output_path):
     image2.save(output_path, format='TIFF')
 
 def linear_interpolate_transparent(input_tiff_path, output_tiff_path):
+    '''Fills in gaps (alpha=0) in input image using cv2.infill'''
+
     dataset = gdal.Open(input_tiff_path, gdal.GA_ReadOnly)
     
     # Read the image bands
     bands = [dataset.GetRasterBand(i+1).ReadAsArray() for i in range(dataset.RasterCount)]
 
     
-    # Separate the alpha channel (assuming it is the last band)
+   
     if len(bands) == 4:
+        # Separate the alpha channel 
         alpha_channel = bands[-1]
         image = np.dstack(bands[:-1])
         
@@ -233,6 +236,8 @@ def copy_tiff_metadata(input_file_path, output_file_path):
     geo_trans = tif_with_RPCs.GetGeoTransform()
     tif_without_RPCs.SetGeoTransform(geo_trans)
     tif_without_RPCs.SetProjection(tif_with_RPCs.GetProjection())
+
+    print("THIS IS THE PROJECTION:" , tif_with_RPCs.GetProjection())
 
     rpcs = tif_with_RPCs.GetMetadata('RPC')
     tif_without_RPCs.SetMetadata(rpcs ,'RPC')

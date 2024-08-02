@@ -9,7 +9,7 @@ from qgisplugin.core.train import test
 
 from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject, QgsPointXY, QgsRasterLayer, QgsRectangle
 # from qgis.core import Qgis, QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer, QgsProject, QgsReferencedRectangle
-from osgeo import gdal, osr
+from osgeo import gdal, osr, gdalconst
 
 
 import random
@@ -43,18 +43,23 @@ class ShipSeeker:
         extent_str, projection_str = extent_string.split(' ')
         xmin, xmax, ymin, ymax = map(float, extent_str.split(','))
         src_crs = projection_str.strip('[]')
+        
+        input_ds = gdal.Open(image_path, gdalconst.GA_ReadOnly)
 
-        print("Translating between", src_crs, "to", "EPSG:4326")
+        proj = osr.SpatialReference(wkt=input_ds.GetProjection())
+        proj.AutoIdentifyEPSG()
+        epsg_id = proj.GetAttrValue('AUTHORITY',1)
 
-        print(xmin, xmax, ymin, ymax)
         gdal_translate_options = gdal.TranslateOptions(
                                     projWin=[xmin, ymax, xmax, ymin],
                                     projWinSRS=src_crs,
-                                    outputSRS="EPSG:4326",
+                                    outputSRS=f"EPSG:{epsg_id}",
                                     format="GTiff"
                                 )
         
-        input_ds = gdal.Open(image_path)
+    # geo_trans = tif_with_RPCs.GetGeoTransform()
+    # tif_without_RPCs.SetGeoTransform(geo_trans)
+    # tif_without_RPCs.SetProjection(tif_with_RPCs.GetProjection())
         gdal.Translate(output_path, input_ds, options=gdal_translate_options)
 
     #TODO: do this
@@ -67,12 +72,13 @@ class ShipSeeker:
 
         self.remove_tmp = True
         self.temp_dir = os.path.join("/tmp", "SHIPWRECK_SEEKER", "temp_chunks")
-        shutil.rmtree(self.temp_dir)
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
 
         os.makedirs(self.temp_dir, exist_ok=False)
 
     def __del__(self):
-        if self.remove_tmp:
+        if self.remove_tmp and os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
     def execute(self, output_path, save_model_output = False, set_progress: callable = None,
