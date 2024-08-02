@@ -45,20 +45,22 @@ from qgis.PyQt.QtWidgets import (
 )
 from qgis.PyQt.QtCore import QCoreApplication, pyqtSignal
 from qgis.PyQt.QtGui import QCursor
-from qgis.PyQt.QtGui import QPixmap
+from qgis.PyQt.QtGui import QPixmap, QImage
 
+
+import os
 
 from qgisplugin.core.ship_seeker import ShipSeeker
 from qgisplugin.interfaces import import_image, write_image
 from qgisplugin.interfaces.RectangleMapTool import RectangleMapTool
-
+from qgisplugin.core.tiff_utils import convert_png_to_tiff, copy_tiff_metadata
 import matplotlib.pyplot as plt
 from scipy.special import softmax
 
-class Drewpers:
+class Thresholder:
     def __init__(self, npy_pred):
         self.probabilities = softmax(npy_pred, axis=1)
-        print(self.probabilities[0, :10, :10])
+        # print(self.probabilities[0, :10, :10])
 
     def get_thresholded_image(self, thresh_value):
         pred_binary = (self.probabilities[:, 1, :, :] > thresh_value).astype(np.uint8)
@@ -76,12 +78,21 @@ class ThresholdingWidget(QDialog):
 
         self.numpy_file_widget.lineEdit().setPlaceholderText(f"Input raw segmentation model predictions (*.npy)")
 
+        self.original_segmentation_textbox.lineEdit().setReadOnly(True)
+        self.original_segmentation_textbox.lineEdit().setPlaceholderText(f"Original Tiff Segmentation Image (*.tif)")
+        self.original_segmentation_textbox.setFilter("Tiff (*.tif);;All (*.*)")
+
         self.outputFileWidget.lineEdit().setReadOnly(True)
-        self.outputFileWidget.lineEdit().setPlaceholderText(f"Output segmentation image file path (*.png)")
+        self.outputFileWidget.lineEdit().setPlaceholderText(f"Output tiff file path (*.tif)")
         self.outputFileWidget.setStorageMode(QgsFileWidget.SaveFile)
-        self.outputFileWidget.setFilter("PNG (*.png);;All (*.*)")
+        self.outputFileWidget.setFilter("Tiff (*.tif);;All (*.*)")
 
         self.percentageSlider.valueChanged.connect(self._update_percentage_display)
+        self.percentageDisplay.textChanged.connect(self._update_percentage_slider)
+
+        # Connect buttons
+        self.previewButton.clicked.connect(self._preview_image)
+        self.saveButton.clicked.connect(self._save_image)
 
         self.success_label.setText("")
 
@@ -92,25 +103,75 @@ class ThresholdingWidget(QDialog):
         # open the widget on the log screen
         self.tabWidget.setCurrentIndex(self.tabWidget.indexOf(self.tab_log))
 
-    def _update_percentage_display(self, value):
-        self.percentageDisplay.setText(f'{value}%')
+    def _preview_image(self):
+        thresholded_image = self.create_image()
+
+        if thresholded_image is not None:
+            plt.imsave("tmp.png", thresholded_image, cmap="jet")
+            pixmap = QPixmap("tmp.png")
+            self.imageLabel.setPixmap(pixmap.scaled(self.imageLabel.size(), aspectRatioMode=Qt.KeepAspectRatio))
+            os.remove("tmp.png") 
+
+    def _save_image(self):
+        thresholded_image = self.create_image()
+        output_file_path = self.outputFileWidget.filePath()
+        original_semgnation_path = self.original_segmentation_textbox.filePath()
+
+        if thresholded_image is not None and output_file_path != "" and original_semgnation_path != "":
+            plt.imsave("tmp.png", thresholded_image, cmap="jet")
+            pixmap = QPixmap("tmp.png")
+            self.imageLabel.setPixmap(pixmap.scaled(self.imageLabel.size(), aspectRatioMode=Qt.KeepAspectRatio))
+            convert_png_to_tiff("tmp.png", output_file_path)
+            copy_tiff_metadata(original_semgnation_path, output_file_path)
+            os.remove("tmp.png")
+
+            self.success_label.setText(f"Image saved to {output_file_path}!")
+
+        if self.openInQGISBox.isChecked():
+            output_raster_layer = QgsRasterLayer(output_file_path, 'New Thresholded Image')
+            QgsProject.instance().addMapLayer(output_raster_layer, True)
+
+    def create_image(self):
+        # Read the value of the input 
+        try:
+            threshold_value = float(self.percentageDisplay.text().replace("%", ""))/100
+        except:
+            threshold_value = 0
 
         input_numpy_path = self.numpy_file_widget.filePath()
         output_file_path = self.outputFileWidget.filePath()
 
-        if input_numpy_path != "" and output_file_path != "":
+        if input_numpy_path != "":
             np_arr = np.load(input_numpy_path)
 
-            self.thresholder = Drewpers(np_arr)
-            pred_thresh = self.thresholder.get_thresholded_image(value/100)
+            self.thresholder = Thresholder(np_arr)
+            pred_thresh = self.thresholder.get_thresholded_image(threshold_value)
             pred_thresh = np.squeeze(pred_thresh)
 
-            plt.imsave(output_file_path, pred_thresh, cmap="jet")
-            pixmap = QPixmap(output_file_path)
-            self.imageLabel.setPixmap(pixmap.scaled(self.imageLabel.size(), aspectRatioMode=Qt.KeepAspectRatio))
+            return pred_thresh
 
-            self.success_label.setText(f"Image saved to {output_file_path}!")
+    def _update_percentage_display(self, value):
+        self.percentageDisplay.blockSignals(True)
+        self.percentageDisplay.setText(f'{value}%')
+        self.percentageDisplay.blockSignals(False)
+    
+    def _update_percentage_slider(self):
+        try:
+            threshold_value = float(self.percentageDisplay.text().replace("%", ""))
+            print(threshold_value, self.percentageSlider.minimum(), self.percentageSlider.maximum())
 
+            if threshold_value < self.percentageSlider.minimum():
+                threshold_value = self.percentageSlider.minimum()
+            elif threshold_value > self.percentageSlider.maximum():
+                threshold_value = self.percentageSlider.maximum()
+
+            # Update the slider's value
+        except:
+            threshold_value = 0
+            
+        self.percentageSlider.blockSignals(True)
+        self.percentageSlider.setValue(int(threshold_value))
+        self.percentageSlider.blockSignals(False)
 
     def _browse_for_image(self):
         """ Browse for an image raster file. """
