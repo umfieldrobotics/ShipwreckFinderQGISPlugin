@@ -23,9 +23,9 @@ import os.path as op
 import numpy as np
 import tempfile
 
-from osgeo import gdal
+from osgeo import gdal, osr
 from qgis.gui import QgsFileWidget, QgsMapLayerComboBox
-from qgis.core import Qgis, QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer, QgsProject, QgsReferencedRectangle
+from qgis.core import Qgis, QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer,QgsVectorLayer, QgsProject, QgsReferencedRectangle, QgsSymbol, QgsFillSymbol, QgsRendererCategory, QgsCategorizedSymbolRenderer
 
 from qgis.utils import iface
 from qgis.PyQt.uic import loadUi
@@ -37,15 +37,17 @@ from qgis.PyQt.QtWidgets import (
     QDialog,
     QDialogButtonBox,
 )
-from qgis.PyQt.QtGui import QPixmap
+from qgis.PyQt.QtGui import QPixmap, QColor
 
 from qgisplugin.core.preprocessing_handler import PreprocessingHandler
 from qgisplugin.core.tiff_utils import copy_tiff_metadata
+from qgisplugin.core.extract_bb import BoundingBoxExtractor
 
+import fiona
+from shapely.geometry import Polygon, mapping
 
 import matplotlib.pyplot as plt
 import cv2
-
 
 
 class ExtractBoxesWidget(QDialog):
@@ -53,7 +55,7 @@ class ExtractBoxesWidget(QDialog):
 
     def __init__(self):
         super(ExtractBoxesWidget, self).__init__()
-        loadUi(op.join(op.dirname(__file__), 'preprocessing_gui.ui'), self)
+        loadUi(op.join(op.dirname(__file__), 'extract_shipwrecks_gui.ui'), self)
         
         # Image Selection
         excluded_providers = [p for p in QgsProviderRegistry.instance().providerList() if p not in ['gdal']]
@@ -65,9 +67,9 @@ class ExtractBoxesWidget(QDialog):
 
         # Output file
         self.outputFileWidget.lineEdit().setReadOnly(True)
-        self.outputFileWidget.lineEdit().setPlaceholderText(f"Output tiff file path...")
+        self.outputFileWidget.lineEdit().setPlaceholderText(f"Output bounding box vector file path...")
         self.outputFileWidget.setStorageMode(QgsFileWidget.SaveFile)
-        self.outputFileWidget.setFilter("Tiff (*.tif);;All (*.*)")
+        self.outputFileWidget.setFilter("Shapefiles (*.shp);;All Files (*.*)")
         self.outputFileWidget.fileChanged.connect(self.on_output_file_selected)
 
         # Run button
@@ -75,18 +77,7 @@ class ExtractBoxesWidget(QDialog):
         self.OKClose.accepted.connect(self._run)
         self.OKClose.rejected.connect(self.close)
 
-        # self.thresholder = None
-
-        # self.numpy_file_widget.lineEdit().setPlaceholderText(f"Input raw segmentation model predictions (*.npy)")
-
-        # self.outputFileWidget.lineEdit().setReadOnly(True)
-        # self.outputFileWidget.lineEdit().setPlaceholderText(f"Output segmentation image file path (*.png)")
-        # self.outputFileWidget.setStorageMode(QgsFileWidget.SaveFile)
-        # self.outputFileWidget.setFilter("PNG (*.png);;All (*.*)")
-
-        # self.percentageSlider.valueChanged.connect(self._update_percentage_display)
-
-        # self.success_label.setText("")
+        
 
 
     def log(self, text):
@@ -131,17 +122,60 @@ class ExtractBoxesWidget(QDialog):
     def on_output_file_selected(self):
         self.output_tiff_path = self.outputFileWidget.filePath()
 
+    def raster_to_numpy(self, raster_ds):
+        num_bands = raster_ds.RasterCount
+    
+        bands = []
+        
+        for i in range(1, num_bands + 1):
+            band = raster_ds.GetRasterBand(i)            
+            band_array = band.ReadAsArray()
+            bands.append(band_array)
+        
+        array_3d = np.stack(bands, axis=-1)
+        
+        return array_3d
+    
+    def export_shape_file(self, bounding_boxes_coords, crs_epsg, output_path):
+        schema = {
+            'geometry': 'Polygon',
+            'properties': {'id': 'int'}
+        }
+
+        with fiona.open(output_path, 'w', driver='ESRI Shapefile', schema=schema, crs=f'epsg:{crs_epsg}') as shp:
+            for i, coords in enumerate(bounding_boxes_coords):       
+                polygon = Polygon(coords)
+                shp.write({
+                    'geometry': mapping(polygon),
+                    'properties': {'id': i}
+                })
+
+        ## Export to vecor layer
+        if self.openCheckBox.isChecked():
+            output_shapefile_layer = QgsVectorLayer(output_path, 'Bounding Boxes', 'ogr')
+            QgsProject.instance().addMapLayer(output_shapefile_layer, True)
+
+            symbol = QgsSymbol.defaultSymbol(output_shapefile_layer.geometryType())
+        
+            # Set the color with transparency (e.g., 50% transparent red)
+            color = QColor(255, 0, 0, 128)  # Red with 50% transparency
+            symbol.setColor(color)
+            
+            # Apply the symbol to the layer's renderer
+            output_shapefile_layer.renderer().setSymbol(symbol)
+            
+            # Refresh the layer to see the changes
+            output_shapefile_layer.triggerRepaint()
 
     def _run(self):
         """ Read all parameters and pass them on to the core function. """
 
-        # todo: read all parameters, throw errors when needed, give user feedback and run code
         raster_layer = self.imageDropDown.currentLayer()
         raster_path = raster_layer.dataProvider().dataSourceUri()
-
         output_path = self.outputFileWidget.filePath()
+
         
-        # Parse the depth array
+        # Parse the image of tiff
         self.progressBar.setValue(10)
         url = raster_path.split('|')[0]
         options = raster_path.split('|')[1:]
@@ -150,27 +184,33 @@ class ExtractBoxesWidget(QDialog):
             raster_ds = gdal.OpenEx(url, open_options=options)
         else:
             raster_ds = gdal.Open(url)
-        depth_band = raster_ds.GetRasterBand(1)
-        depth_array = depth_band.ReadAsArray()
+
+        np_segmentation_image = self.raster_to_numpy(raster_ds)
+
+
+        # Get the CRS of the TIFF
+        projection = raster_ds.GetProjection()
+        spatial_ref = osr.SpatialReference()
+        spatial_ref.ImportFromWkt(projection)
+        crs_epsg = spatial_ref.GetAttrValue('AUTHORITY', 1)  # EPSG code
+        geotransform = raster_ds.GetGeoTransform()
+
         self.progressBar.setValue(20)
 
-        # Normalize the depth array
-        preprocessor = PreprocessingHandler()
-        ker_size_value = self.kernelSizeBox.value()
-        inpaint_rad_value = self.infillRadiusBox.value()
-        result_arr = preprocessor.normalize(depth_array, self.progressBar.setValue, 
-                                            kernel_size=ker_size_value, inpaint_radius=inpaint_rad_value)
-        
-        # Save the result arr to the output_path and copy over the meta data...
-        cv2.imwrite(output_path, result_arr)
-        copy_tiff_metadata(raster_path, output_path)
+        # Extract the bounding boxes
+        bb_extractor = BoundingBoxExtractor(np_segmentation_image, geotransform)
+        red_mask = bb_extractor.get_mask((127, 0, 0, 255))
+        bounding_boxes_coords = bb_extractor.extract_metric_bb(red_mask, 
+                                                               self.minThresholdBox.value(), 
+                                                               self.maxThresholdBox.value())
 
-        if self.openCheckBox.isChecked():
-                output_raster_layer = QgsRasterLayer(output_path, 'Preprocessed Raster')
-                QgsProject.instance().addMapLayer(output_raster_layer, True)
+        self.progressBar.setValue(80)
 
+        # Write the shape file
+        self.export_shape_file(bounding_boxes_coords, crs_epsg, output_path)
         self.progressBar.setValue(100)
 
+        return
 
 def _run():
     """ To run your GUI stand alone: """
