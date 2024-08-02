@@ -5,3 +5,5 @@ tqdm
 matplotlib
 wandb
 opencv-python
+shapely
+fiona

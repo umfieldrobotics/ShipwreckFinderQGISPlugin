@@ -23,9 +23,9 @@ import os.path as op
 import numpy as np
 import tempfile
 
-from osgeo import gdal
+from osgeo import gdal, osr
 from qgis.gui import QgsFileWidget, QgsMapLayerComboBox
-from qgis.core import Qgis, QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer, QgsProject, QgsReferencedRectangle
+from qgis.core import Qgis, QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer,QgsVectorLayer, QgsProject, QgsReferencedRectangle
 
 from qgis.utils import iface
 from qgis.PyQt.uic import loadUi
@@ -42,6 +42,9 @@ from qgis.PyQt.QtGui import QPixmap
 from qgisplugin.core.preprocessing_handler import PreprocessingHandler
 from qgisplugin.core.tiff_utils import copy_tiff_metadata
 
+
+import fiona
+from shapely.geometry import box, mapping
 
 import matplotlib.pyplot as plt
 import cv2
@@ -65,9 +68,9 @@ class ExtractBoxesWidget(QDialog):
 
         # Output file
         self.outputFileWidget.lineEdit().setReadOnly(True)
-        self.outputFileWidget.lineEdit().setPlaceholderText(f"Output tiff file path...")
+        self.outputFileWidget.lineEdit().setPlaceholderText(f"Output bounding box vector file path...")
         self.outputFileWidget.setStorageMode(QgsFileWidget.SaveFile)
-        self.outputFileWidget.setFilter("Tiff (*.tif);;All (*.*)")
+        self.outputFileWidget.setFilter("Shapefiles (*.shp);;All Files (*.*)")
         self.outputFileWidget.fileChanged.connect(self.on_output_file_selected)
 
         # Run button
@@ -131,15 +134,30 @@ class ExtractBoxesWidget(QDialog):
     def on_output_file_selected(self):
         self.output_tiff_path = self.outputFileWidget.filePath()
 
+    def raster_to_numpy(self, raster_ds):
+        num_bands = raster_ds.RasterCount
+    
+        bands = []
+        
+        for i in range(1, num_bands + 1):
+            band = raster_ds.GetRasterBand(i)            
+            band_array = band.ReadAsArray()
+            bands.append(band_array)
+        
+        array_3d = np.stack(bands, axis=-1)
+        
+        return array_3d
 
     def _run(self):
         """ Read all parameters and pass them on to the core function. """
 
+        
+
         # todo: read all parameters, throw errors when needed, give user feedback and run code
         raster_layer = self.imageDropDown.currentLayer()
         raster_path = raster_layer.dataProvider().dataSourceUri()
-
         output_path = self.outputFileWidget.filePath()
+
         
         # Parse the depth array
         self.progressBar.setValue(10)
@@ -150,6 +168,70 @@ class ExtractBoxesWidget(QDialog):
             raster_ds = gdal.OpenEx(url, open_options=options)
         else:
             raster_ds = gdal.Open(url)
+
+        self.raster_to_numpy(raster_ds)
+
+        # now we have the image that we can work         
+
+        # Get the CRS of the TIFF
+        projection = raster_ds.GetProjection()
+        spatial_ref = osr.SpatialReference()
+        spatial_ref.ImportFromWkt(projection)
+        crs_epsg = spatial_ref.GetAttrValue('AUTHORITY', 1)  # EPSG code
+
+        # Get the geotransform
+        geotransform = raster_ds.GetGeoTransform()
+
+        print("Got the geotransform")
+
+
+
+        # NOW ACTUALLY MAKE BOUNDING BOXS
+
+
+        # Example bounding boxes in pixel coordinates: (x_min, y_min, x_max, y_max)
+        bounding_boxes = [
+            (100, 150, 200, 250),
+            (300, 400, 350, 450),
+            # Add more bounding boxes as needed
+        ]
+
+        # Create schema for shapefile
+        schema = {
+            'geometry': 'Polygon',
+            'properties': {'id': 'int'}
+        }
+
+        # Define shapefile path
+
+        # Open shapefile for writing
+        with fiona.open(output_path, 'w', driver='ESRI Shapefile', schema=schema, crs=f'epsg:{crs_epsg}') as shp:
+            for i, bbox in enumerate(bounding_boxes):
+                # Convert pixel coordinates to map coordinates
+                min_x, min_y, max_x, max_y = bbox
+                x_min = geotransform[0] + min_x * geotransform[1] + min_y * geotransform[2]
+                y_max = geotransform[3] + min_x * geotransform[4] + min_y * geotransform[5]
+                x_max = geotransform[0] + max_x * geotransform[1] + max_y * geotransform[2]
+                y_min = geotransform[3] + max_x * geotransform[4] + max_y * geotransform[5]
+                
+                # Create shapely box
+                polygon = box(x_min, y_min, x_max, y_max)
+                
+                # Write feature to shapefile
+                shp.write({
+                    'geometry': mapping(polygon),
+                    'properties': {'id': i}
+                })
+
+        ## NOW WRITE IT TO THE VECTOR LAYER
+        if self.openCheckBox.isChecked():
+            output_shapefile_layer = QgsVectorLayer(output_path, 'Bounding Boxes', 'ogr')
+            QgsProject.instance().addMapLayer(output_shapefile_layer, True)
+
+
+        return
+
+
         depth_band = raster_ds.GetRasterBand(1)
         depth_array = depth_band.ReadAsArray()
         self.progressBar.setValue(20)
@@ -165,9 +247,7 @@ class ExtractBoxesWidget(QDialog):
         cv2.imwrite(output_path, result_arr)
         copy_tiff_metadata(raster_path, output_path)
 
-        if self.openCheckBox.isChecked():
-                output_raster_layer = QgsRasterLayer(output_path, 'Preprocessed Raster')
-                QgsProject.instance().addMapLayer(output_raster_layer, True)
+        
 
         self.progressBar.setValue(100)
 
