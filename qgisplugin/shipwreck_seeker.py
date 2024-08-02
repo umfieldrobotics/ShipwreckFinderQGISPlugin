@@ -30,6 +30,7 @@ from qgisplugin.interfaces.my_gui import MyWidget
 from qgisplugin.interfaces.thresholding_gui import ThresholdingWidget
 from qgisplugin.interfaces.preprocessing_gui import PreprocessingWidget
 from qgisplugin.interfaces.my_plugin_provider import MyProcessingProvider
+from qgisplugin.interfaces.extract_shipwrecks_gui import ExtractBoxesWidget
 from qgisplugin.images.cqp_resources_rc import qInitResources
 qInitResources()  # necessary to be able to access your images
 
@@ -78,6 +79,11 @@ class ShipwreckSeeker:
         action.setStatusTip('Quick information on your plugin.')
         self.main_menu.addAction(action)
 
+        action = QAction(QIcon(':/plugin_logo'), 'Extract Bounding Boxes', self.iface.mainWindow())
+        action.triggered.connect(self.run_box_extractor_widget)
+        action.setStatusTip('Quick information on your plugin.')
+        self.main_menu.addAction(action)
+
         # add provider to processing toolbox
         self.provider = MyProcessingProvider()
         QgsApplication.processingRegistry().addProvider(self.provider)
@@ -104,3 +110,11 @@ class ShipwreckSeeker:
         widget = PreprocessingWidget()
         widget.show()
         widget.exec_()
+
+
+    @staticmethod
+    def run_box_extractor_widget():
+        widget = ExtractBoxesWidget()
+        widget.show()
+        widget.exec_()
+    
