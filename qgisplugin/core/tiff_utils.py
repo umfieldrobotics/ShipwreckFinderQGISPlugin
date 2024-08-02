@@ -159,6 +159,21 @@ def get_tiff_size(tiff_path):
     
     return width, height
 
+def convert_png_to_tiff(input_path, output_path):
+    # Open the input PNG file
+    dataset = gdal.Open(input_path)
+    if dataset is None:
+        print("Failed to open file.")
+        return
+
+    # Define the options for the TIFF format
+    options = gdal.TranslateOptions(format='GTiff')
+
+    # Convert the image and save it as TIFF
+    gdal.Translate(output_path, dataset, options=options)
+    print(f"Image successfully converted to {output_path}")
+
+
 def merge_transparent_parts(image1_path, image2_path, output_path):
     """
     Merge the transparent parts of image1 into image2.

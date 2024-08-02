@@ -131,26 +131,20 @@
                         </layout>
                       </item>
 
-                      <!-- Output wwidgits -->
+                      <!-- Input Raster Selection -->
                       <item>
-                        <widget class="QLabel" name="label_2">
-                          <property name="font">
-                            <font>
-                              <pointsize>10</pointsize>
-                            </font>
-                          </property>
-                          <property name="text">
-                            <string>Output</string>
-                          </property>
-                        </widget>
+                        <layout class="QHBoxLayout" name="horizontalLayout_3">
+                          <item>
+                            <widget class="QgsFileWidget" name="original_segmentation_textbox" native="true">
+                              <property name="filter" stdset="0">
+                                <string>Original Tiff Segmentation Image (*.tif)</string>
+                              </property>
+                            </widget>
+                          </item>
+                        </layout>
                       </item>
-                      <item>
-                        <widget class="QgsFileWidget" name="outputFileWidget" native="true">
-                          <property name="filter" stdset="0">
-                            <string/>
-                          </property>
-                        </widget>
-                      </item>
+
+
                       <!-- <item>
                         <widget class="QCheckBox" name="openCheckBox">
                           <property name="font">
@@ -223,10 +217,10 @@
                           <item>
                             <widget class="QLineEdit" name="percentageDisplay">
                               <property name="readOnly">
-                                <bool>true</bool>
+                                <bool>false</bool>
                               </property>
                               <property name="text">
-                                <string>50%</string>
+                                <string>50</string>
                               </property>
                               <property name="alignment">
                                 <set>Qt::AlignCenter</set>
@@ -236,6 +230,132 @@
                               </property>
                             </widget>
                           </item>
+                        </layout>
+                      </item>
+
+
+                      <item>
+                        <spacer name="verticalSpacer">
+                          <property name="orientation">
+                            <enum>Qt::Vertical</enum>
+                          </property>
+                          <property name="sizeHint" stdset="0">
+                            <size>
+                              <width>20</width>
+                              <height>40</height>
+                            </size>
+                          </property>
+                        </spacer>
+                      </item>
+
+
+                      <!-- Centered Preview Button -->
+                      <item>
+                        <layout class="QHBoxLayout" name="hboxLayoutCentered">
+                        <item>
+                          <spacer name="horizontalSpacer">
+                          <property name="orientation">
+                            <enum>Qt::Horizontal</enum>
+                          </property>
+                          <property name="sizeType">
+                            <enum>QSizePolicy::Expanding</enum>
+                          </property>
+                          </spacer>
+                        </item>
+                        <item>
+                          <widget class="QPushButton" name="previewButton">
+                          <property name="text">
+                            <string>Preview Image</string>
+                          </property>
+                          <property name="minimumSize">
+                            <size>
+                            <width>150</width>
+                            <height>50</height>
+                            </size>
+                          </property>
+                          </widget>
+                        </item>
+                        <item>
+                          <spacer name="horizontalSpacer_2">
+                          <property name="orientation">
+                            <enum>Qt::Horizontal</enum>
+                          </property>
+                          <property name="sizeType">
+                            <enum>QSizePolicy::Expanding</enum>
+                          </property>
+                          </spacer>
+                        </item>
+                        </layout>
+                      </item>
+
+                      <!-- Output widgits -->
+                      <item>
+                        <widget class="QLabel" name="label_2">
+                          <property name="font">
+                            <font>
+                              <pointsize>10</pointsize>
+                            </font>
+                          </property>
+                          <property name="text">
+                            <string>Output</string>
+                          </property>
+                        </widget>
+                      </item>
+                      <item>
+                        <widget class="QgsFileWidget" name="outputFileWidget" native="true">
+                          <property name="filter" stdset="0">
+                            <string/>
+                          </property>
+                        </widget>
+                      </item>
+
+                      <!-- Checkbox -->
+                      <item>
+                        <widget class="QCheckBox" name="openInQGISBox">
+                        <property name="text">
+                          <string>Open Result in QGIS</string>
+                        </property>
+                        </widget>
+                      </item>
+
+                      <!-- Spacer to push Save Image button to bottom -->
+                      <item>
+                        <spacer name="verticalSpacer">
+                        <property name="orientation">
+                          <enum>Qt::Vertical</enum>
+                        </property>
+                        <property name="sizeType">
+                          <enum>QSizePolicy::Expanding</enum>
+                        </property>
+                        </spacer>
+                      </item>
+
+                      <!-- Save Image Button aligned to bottom right -->
+                      <item>
+                        <layout class="QHBoxLayout" name="hboxLayoutSave">
+                        <item>
+                          <spacer name="horizontalSpacer_3">
+                          <property name="orientation">
+                            <enum>Qt::Horizontal</enum>
+                          </property>
+                          <property name="sizeType">
+                            <enum>QSizePolicy::Expanding</enum>
+                          </property>
+                          </spacer>
+                        </item>
+                        <item>
+                          <widget class="QPushButton" name="saveButton">
+                          <property name="text">
+                            <string>Save Image</string>
+                          </property>
+                          <property name="minimumSize">
+                            <size>
+                            <width>100</width>
+                            <height>30</height>
+                            </size>
+                          </property>
+                          </widget>
+                        </item>
                         </layout>
                       </item>
 
@@ -259,19 +379,15 @@
                     </item>
 
 
-                      <item>
-                        <spacer name="verticalSpacer">
-                          <property name="orientation">
-                            <enum>Qt::Vertical</enum>
-                          </property>
-                          <property name="sizeHint" stdset="0">
-                            <size>
-                              <width>20</width>
-                              <height>40</height>
-                            </size>
-                          </property>
-                        </spacer>
-                      </item>
+
+
+
+
+
+
+
+
+
                     </layout>
                   </widget>
                   <widget class="QWidget" name="tab_log">
