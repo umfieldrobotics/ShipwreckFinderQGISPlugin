@@ -152,16 +152,25 @@ class PreprocessingWidget(QDialog):
             raster_ds = gdal.Open(url)
         depth_band = raster_ds.GetRasterBand(1)
         depth_array = depth_band.ReadAsArray()
+        scan_xres = abs(raster_ds.GetGeoTransform()[1])
+        scan_yres = abs(raster_ds.GetGeoTransform()[5])
+        if (scan_xres != scan_yres):
+            print("Scan x and y resolution are not the same")
+
         self.progressBar.setValue(20)
 
         # Normalize the depth array
         preprocessor = PreprocessingHandler()
-        ker_size_value = self.kernelSizeBox.value()
+        ker_size_value = self.kernelSizeBox.value() # Taken as User input from the GUI, default 50
         inpaint_rad_value = self.infillRadiusBox.value()
-        result_arr = preprocessor.normalize(depth_array, self.progressBar.setValue, 
-                                            kernel_size=ker_size_value, inpaint_radius=inpaint_rad_value)
+        result_arr, mask = preprocessor.normalize2(depth_array, self.progressBar.setValue, 
+                                            kernel_size=ker_size_value, inpaint_radius=inpaint_rad_value,
+                                            x_res=scan_xres, y_res=scan_yres)
         
         # Save the result arr to the output_path and copy over the meta data...
+        print("Output path:", output_path)
+        np.save(output_path.replace('.tif','.npy'), result_arr) # Masked, 200x200x3, between 0 and 1
+        # np.save(output_path.replace('.tif','_mask.npy'), mask) # Mask of valid pixels before inpainting, not currently used
         cv2.imwrite(output_path, result_arr)
         copy_tiff_metadata(raster_path, output_path)
 

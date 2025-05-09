@@ -10,12 +10,15 @@ from qgisplugin.core.train import test
 from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject, QgsPointXY, QgsRasterLayer, QgsRectangle
 # from qgis.core import Qgis, QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer, QgsProject, QgsReferencedRectangle
 from osgeo import gdal, osr, gdalconst
+from qgisplugin.core.utils import clear_directory
 
 
 import random
 import shutil
 
-WEIGHTS_PATH = "/home/frog/dev/ShipwreckSeekerQGISPlugin/qgisplugin/core/mbes_unet.pt"
+# WEIGHTS_PATH = "/home/frog/dev/ShipwreckSeekerQGISPlugin/qgisplugin/core/mbes_unet.pt"
+WEIGHTS_PATH = "/home/tylergs/Documents/noaa_multibeam_real_data/Training/Models/cnp_data_5_latest.pt"
+# WEIGHTS_PATH = "/home/tylergs/Documents/noaa_multibeam_real_data/Training/mbes_unet.pt"
 
 from qgis.core import (
     QgsRasterFileWriter,
@@ -77,6 +80,8 @@ class ShipSeeker:
 
         os.makedirs(self.temp_dir, exist_ok=False)
 
+        self.chunk_size = 200 # This should be in meters, but we need to scale it by res still
+
     def __del__(self):
         if self.remove_tmp and os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
@@ -89,6 +94,22 @@ class ShipSeeker:
 
         # Output path for chunks
         set_progress(1)
+
+        # This directory is just needed for testing, TODO: remove this line
+        clear_directory("/home/tylergs/Documents/noaa_multibeam_real_data/Training/Plugin_outputs")
+
+        # Adding test to see if we can extract raster res info
+        raster_path = self.raster_layer.dataProvider().dataSourceUri()
+        url = raster_path.split('|')[0]
+        options = raster_path.split('|')[1:]
+        if options:
+            options[0].replace("option:", "")
+            raster_ds = gdal.OpenEx(url, open_options=options)
+        else:
+            raster_ds = gdal.Open(url)
+        scan_xres = abs(raster_ds.GetGeoTransform()[1])
+        scan_yres = abs(raster_ds.GetGeoTransform()[5])
+        # print("Testing, raster x/y res", scan_xres, scan_yres) # these are right
 
         # Export the raster as a geotiff
         geotiff_path = os.path.join(self.temp_dir, "exported_geotiff.tif")
@@ -106,7 +127,9 @@ class ShipSeeker:
         width, height = get_tiff_size(interpolated_path)
         
         # Create cropped images in /temp_chunks/
-        rows, cols = create_chunks(interpolated_path, self.temp_dir)
+        rows, cols = create_chunks(interpolated_path, self.temp_dir, 
+                                   x_chunk_size=int(self.chunk_size/scan_xres),
+                                   y_chunk_size=int(self.chunk_size/scan_yres))
         ignore_images = [cropped_path, interpolated_path, geotiff_path]
 
         input_files = glob.glob(os.path.join(self.temp_dir, "*"))
@@ -116,7 +139,9 @@ class ShipSeeker:
             if input_file_path in ignore_images:
                 continue
 
-            output_tiff_file_path = test([input_file_path], WEIGHTS_PATH)[0][0]
+            output_tiff_file_path = test([input_file_path], WEIGHTS_PATH,
+                                        x_chunk_size=int(self.chunk_size/scan_xres),
+                                        y_chunk_size=int(self.chunk_size/scan_yres))[0][0]
 
             
             copy_tiff_metadata(input_file_path, output_tiff_file_path)

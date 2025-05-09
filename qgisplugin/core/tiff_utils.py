@@ -50,7 +50,7 @@ def crop_tiff(input_tiff, output_tiff, width, height, start_x=0, start_y=0):
     del dataset
     del out_dataset
 
-def create_chunks(input_path, output_dir, chunk_size=501):
+def create_chunks(input_path, output_dir, x_chunk_size=200, y_chunk_size=200): # Chunk size is in meters
     # Open the raster dataset
     dataset = gdal.Open(input_path)
     if dataset is None:
@@ -62,8 +62,8 @@ def create_chunks(input_path, output_dir, chunk_size=501):
     y_size = dataset.RasterYSize
 
     # Calculate number of chunks
-    x_chunks = (x_size + chunk_size - 1) // chunk_size
-    y_chunks = (y_size + chunk_size - 1) // chunk_size
+    x_chunks = (x_size + x_chunk_size - 1) // x_chunk_size
+    y_chunks = (y_size + y_chunk_size - 1) // y_chunk_size
 
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
@@ -72,13 +72,13 @@ def create_chunks(input_path, output_dir, chunk_size=501):
     for i in range(x_chunks):
         for j in range(y_chunks):
             # Calculate chunk coordinates and size
-            x_offset = i * chunk_size
-            y_offset = j * chunk_size
-            width = min(chunk_size, x_size - x_offset)
-            height = min(chunk_size, y_size - y_offset)
+            x_offset = i * x_chunk_size
+            y_offset = j * y_chunk_size
+            width = min(x_chunk_size, x_size - x_offset)
+            height = min(y_chunk_size, y_size - y_offset)
 
-            extended_width = math.ceil(width/chunk_size) * chunk_size
-            extended_height = math.ceil(height/chunk_size) * chunk_size
+            extended_width = math.ceil(width/x_chunk_size) * x_chunk_size
+            extended_height = math.ceil(height/y_chunk_size) * y_chunk_size
 
             # Create chunk file name
             chunk_filename = f"chunk_{i}_{j}.tif"
@@ -107,7 +107,7 @@ def create_chunks(input_path, output_dir, chunk_size=501):
                 data = band.ReadAsArray(x_offset, y_offset, width, height)
 
                 # PAD the data
-                new_data = np.zeros((501, 501))
+                new_data = np.zeros((x_chunk_size, y_chunk_size))
                 new_data[:len(data), :len(data[0])] = data
 
                 chunk_band.WriteArray(new_data)
@@ -252,7 +252,7 @@ def copy_tiff_metadata(input_file_path, output_file_path):
     tif_without_RPCs.SetGeoTransform(geo_trans)
     tif_without_RPCs.SetProjection(tif_with_RPCs.GetProjection())
 
-    print("THIS IS THE PROJECTION:" , tif_with_RPCs.GetProjection())
+    # print("THIS IS THE PROJECTION:" , tif_with_RPCs.GetProjection())
 
     rpcs = tif_with_RPCs.GetMetadata('RPC')
     tif_without_RPCs.SetMetadata(rpcs ,'RPC')
