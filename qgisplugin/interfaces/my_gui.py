@@ -236,7 +236,16 @@ class MyWidget(QDialog):
 
         try:
             # Only temp file possible when result is opened in QGIS
-            output_path = self.outputFileWidget.filePath()
+
+            # output_path = self.outputFileWidget.filePath()
+            
+            # Error handling for empty output_path
+            try:
+                output_path = self.outputFileWidget.filePath()
+            except Exception as e:
+                print(f"Warning: Failed to get file path, using default. Reason: {e}")
+                output_path = "prediction.tif"  # or use os.path.join(...)
+
 
             if not self.openCheckBox.isChecked() and len(output_path) == 0:
                 raise Exception("If you won't open the result in QGIS, you must select a base file name for output.")

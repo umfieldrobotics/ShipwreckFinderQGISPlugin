@@ -119,7 +119,6 @@ class ShipSeeker:
         cropped_path = os.path.join(self.temp_dir, "cropped_geotiff.tif")
         self.crop_image_using_extent(geotiff_path, self.extent_str, cropped_path) # Todo, use this instead
 
-
         # TODO: Just Testing...
         interpolated_path = os.path.join(self.temp_dir, "cropped_interpolated_geotiff.tif")
         linear_interpolate_transparent(cropped_path, interpolated_path)
@@ -152,6 +151,10 @@ class ShipSeeker:
         # Merge the chunks
         merge_chunks(self.temp_dir, rows, cols, output_path, save_model_output)
         crop_tiff(output_path, output_path, width, height)
+
+        # out_width, out_height = get_tiff_size(output_path)
+        # crop_tiff(output_path, output_path, out_width, out_height)
+
 
         merge_transparent_parts(cropped_path, output_path, output_path)
         copy_tiff_metadata(cropped_path, output_path)

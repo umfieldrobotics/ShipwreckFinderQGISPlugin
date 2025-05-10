@@ -10,6 +10,8 @@ class PreprocessingHandler:
     def __init__(self): 
         pass
 
+    # Original function written by Drew:
+
     # def normalize(self, depth_array, set_progress: callable = None, 
     #               kernel_size=200, inpaint_radius=10, x_res=1.0, y_res=1.0):
     #     depth_array[depth_array > 10000] = np.nan
@@ -69,6 +71,7 @@ class PreprocessingHandler:
 
     #     return rgb_grayscale_image
 
+    # Tyler's new function that doesn't use local normalization
     def normalize2(self, depth_array, set_progress: callable = None, 
                   kernel_size=200, inpaint_radius=10, x_res=1.0, y_res=1.0):
         '''
@@ -94,12 +97,12 @@ class PreprocessingHandler:
 
         # Inpainting, used in original plugin. Commenting out for now
 
-        if inpaint_radius != 0:
-            inpainted = cv2.inpaint((image * 255).astype(np.uint8), nan_mask.astype(np.uint8), inpaint_radius, cv2.INPAINT_TELEA)
-            processed_image = cv2.cvtColor((inpainted).astype(np.uint8), cv2.COLOR_GRAY2RGB) # rgb_grayscale_image
-        else:
-            processed_image = cv2.cvtColor((image * 255).astype(np.uint8), cv2.COLOR_GRAY2RGB) 
-        # processed_image = np.stack((image,image,image), axis = 2)
+        # if inpaint_radius != 0:
+        #     inpainted = cv2.inpaint((image * 255).astype(np.uint8), nan_mask.astype(np.uint8), inpaint_radius, cv2.INPAINT_TELEA)
+        #     processed_image = cv2.cvtColor((inpainted).astype(np.uint8), cv2.COLOR_GRAY2RGB) # rgb_grayscale_image
+        # else:
+        #     processed_image = cv2.cvtColor((image * 255).astype(np.uint8), cv2.COLOR_GRAY2RGB) 
+        processed_image = cv2.cvtColor((image * 255).astype(np.uint8), cv2.COLOR_GRAY2RGB) 
 
         set_progress(80)
 
