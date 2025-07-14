@@ -13,26 +13,36 @@ def crop_tiff(input_tiff, output_tiff, width, height, start_x=0, start_y=0):
     """
     # Open the input TIFF file
     dataset = gdal.Open(input_tiff)
+    print("Copy1")
     if dataset is None:
         raise ValueError("Unable to open input TIFF file.")
     
     num_bands = dataset.RasterCount
-
+    print("Copy2")
     
     # Get the geo-transform and projection
     geotransform = dataset.GetGeoTransform()
+    print("Copy3")
     projection = dataset.GetProjection()
+    print("Copy4")
     
     # Create a new dataset for the cropped image
     driver = gdal.GetDriverByName('GTiff')
+    print("Copy5")
     out_dataset = driver.Create(output_tiff, width, height, num_bands, dataset.GetRasterBand(1).DataType)
+    print("Copy6")
     
     # Set the geo-transform and projection
     new_geotransform = list(geotransform)
+    print("Copy7")
     new_geotransform[0] += start_x * geotransform[1] + start_y * geotransform[2]
+    print("Copy8")
     new_geotransform[3] += start_x * geotransform[4] + start_y * geotransform[5]
+    print("Copy9")
     out_dataset.SetGeoTransform(new_geotransform)
+    print("Copy9")
     out_dataset.SetProjection(projection)
+    print("Copy10")
 
     # Read and write data for each band
     for band_num in range(1, num_bands + 1):
@@ -43,10 +53,12 @@ def crop_tiff(input_tiff, output_tiff, width, height, start_x=0, start_y=0):
         cropped_array = band.ReadAsArray(start_x, start_y, width, height)
 
         out_band.WriteArray(cropped_array)
-    
+    print("Copy11")
     # Flush and close the datasets
     out_band.FlushCache()
+    print("Copy12")
     out_dataset.FlushCache()
+    print("Copy13")
     del dataset
     del out_dataset
 
@@ -123,7 +135,21 @@ def create_chunks(input_path, output_dir, chunk_size=501):
 def merge_chunks(output_dir, rows, cols, output_path, save_model_output):
     # Merge the tiff files
     chunk_tiff_files = [os.path.join(output_dir, f) for f in os.listdir(output_dir) if "_pred.tiff" in f]
-    gdal_merge_cmd = f"gdal_merge.py -o {output_path} " + " ".join(chunk_tiff_files)
+
+    # print(f"Chunk tiff files from merge_chunks:")
+    # for elt in chunk_tiff_files:
+    #     print(elt)
+
+    gdal_merge_cmd = f"gdal_merge.py -o {output_path} --co \"BIGTIFF=YES\" --co \"TILED=YES\" " + " ".join(chunk_tiff_files)
+    # gdal_merge_cmd = gdal_merge_cmd + " > /home/smitd/Desktop/merge_log.txt 2>&1"
+    # with open("/home/smitd/Desktop/gdal_cmd.txt", 'w') as f:
+    #     f.write(gdal_merge_cmd)
+
+    # Things to try:
+    #   BIGTIFF in case it's too large for a tiff when saving (--co BIGTIFF=YES) and (--co TILED=YES)
+    #   Use gdalwarp in case it's memory limitations
+    #   Increase file descriptor limit (1024), using (ulimit -n 8192 <or higher>)
+
     os.system(gdal_merge_cmd)
 
     if save_model_output:
@@ -178,27 +204,50 @@ def merge_transparent_parts(image1_path, image2_path, output_path):
     """
     Merge the transparent parts of image1 into image2.
     """
+
+    print("Merge1")
+    # FOR ONE CHANNEL INPUT
     # Open both images
     image1 = Image.open(image1_path).convert("RGBA")
     image2 = Image.open(image2_path).convert("RGBA")
 
+    # FOR TWO CHANNEL INPUT
+    # import rasterio
+    # with rasterio.open(image1_path) as src:
+    #     data1 = src.read()
+    # with rasterio.open(image2_path) as src:
+    #     data2 = src.read()
+    # array1 = data1[0]
+    # array1 = ((array1 - array1.min()) / (array1.ptp() + 1e-6) * 255).astype(np.uint8)
+    # image1 = Image.fromarray(array1).convert("RGBA")
+
+    # array2 = data2[0]
+    # array2 = ((array2 - array2.min()) / (array2.ptp() + 1e-6) * 255).astype(np.uint8)
+    # image2 = Image.fromarray(array2).convert("RGBA")
+
+    
     # Ensure image2 is the same size as image1
     if image1.size != image2.size:
         raise ValueError("Both images must be the same size")
 
     # Split image1 into its components
     r1, g1, b1, a1 = image1.split()
+    print("Merge2")
     # Split image2 into its components
     r2, g2, b2, a2 = image2.split()
+    print("Merge3")
 
     # Create a mask where image1 is transparent
     transparency_mask = Image.eval(a1, lambda alpha: 255 if alpha == 0 else 0)
+    print("Merge4")
 
     # Paste the transparent parts of image1 into image2 using the mask
     image2.paste(image1, (0, 0), transparency_mask)
+    print("Merge5")
 
     # Save the resulting image
     image2.save(output_path, format='TIFF')
+    print("Merge6")
 
 def linear_interpolate_transparent(input_tiff_path, output_tiff_path):
     '''Fills in gaps (alpha=0) in input image using cv2.infill'''
@@ -245,17 +294,27 @@ def linear_interpolate_transparent(input_tiff_path, output_tiff_path):
 def copy_tiff_metadata(input_file_path, output_file_path):
     '''Copies GeoTiff metadata from input_file_path to output_file_path'''
 
+    # print("Meta1")
+
     tif_with_RPCs = gdal.Open(input_file_path, gdalconst.GA_ReadOnly)
+    # print("Meta2")
     tif_without_RPCs = gdal.Open(output_file_path,gdalconst.GA_Update)
+    # print("Meta3")
     
     geo_trans = tif_with_RPCs.GetGeoTransform()
+    # print("Meta4")
     tif_without_RPCs.SetGeoTransform(geo_trans)
+    # print("Meta5")
     tif_without_RPCs.SetProjection(tif_with_RPCs.GetProjection())
+    # print("Meta6")
 
     print("THIS IS THE PROJECTION:" , tif_with_RPCs.GetProjection())
+    # print("Meta7")
 
     rpcs = tif_with_RPCs.GetMetadata('RPC')
+    # print("Meta8")
     tif_without_RPCs.SetMetadata(rpcs ,'RPC')
+    # print("Meta9")
 
     del(tif_with_RPCs)
     del(tif_without_RPCs)

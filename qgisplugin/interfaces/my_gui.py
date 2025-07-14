@@ -100,6 +100,9 @@ class MyWidget(QDialog):
 
         self.extentButton.clicked.connect(self.selectExtent)
 
+        # other parameters
+        self.percentageSlider.valueChanged.connect(self.updateSliderPercent)
+
         # output
         self.outputFileWidget.lineEdit().setReadOnly(True)
         self.outputFileWidget.lineEdit().setPlaceholderText(f"Output tiff file path...")
@@ -167,10 +170,17 @@ class MyWidget(QDialog):
     def useCanvasExtent(self):
         self.setExtentValueFromRect(QgsReferencedRectangle(iface.mapCanvas().extent(), 
                                                            iface.mapCanvas().mapSettings().destinationCrs()))
-        
+
+    def useCurrentLayerExtent(self):
+        layer = self.imageDropDown.currentLayer()
+        self.setExtentValueFromRect(QgsReferencedRectangle(layer.extent(), layer.crs()))
+
     def updateExtent(self):
         r = self.tool.rectangle()
         self.setExtentValueFromRect(r)
+
+    def updateSliderPercent(self, value):
+        self.percentageSliderValue.setText(f"{value}%")
 
     def selectExtent(self):
         popupmenu = QMenu()
@@ -181,16 +191,21 @@ class MyWidget(QDialog):
         useLayerExtentAction = QAction(
             QCoreApplication.translate("ExtentSelectionPanel", 'Use Layer Extent…'),
             self.extentButton)
+        useCurrentLayerExtentAction = QAction(
+            QCoreApplication.translate("ExtentSelectionPanel", "Use Current Layer"),
+            self.extentButton)
         selectOnCanvasAction = QAction(
             self.tr('Select Extent on Canvas'), self.extentButton)
         
         popupmenu.addAction(useCanvasExtentAction)
         popupmenu.addAction(useLayerExtentAction)
+        popupmenu.addAction(useCurrentLayerExtentAction)
         popupmenu.addSeparator()
         popupmenu.addAction(selectOnCanvasAction)
 
         selectOnCanvasAction.triggered.connect(self.selectOnCanvas)
         useLayerExtentAction.triggered.connect(self.useLayerExtent)
+        useCurrentLayerExtentAction.triggered.connect(self.useCurrentLayerExtent)
         useCanvasExtentAction.triggered.connect(self.useCanvasExtent)
 
         popupmenu.exec(QCursor.pos())

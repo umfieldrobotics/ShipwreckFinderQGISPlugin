@@ -15,7 +15,9 @@ from osgeo import gdal, osr, gdalconst
 import random
 import shutil
 
-WEIGHTS_PATH = "/home/frog/dev/ShipwreckSeekerQGISPlugin/qgisplugin/core/mbes_unet.pt"
+# WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/mbes_unet.pt" # Original
+WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unet_lemon-oath-149_best.pt" # New one channel
+# WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unet_aux_effortless-dust-150_best.pt" # New hillshade
 
 from qgis.core import (
     QgsRasterFileWriter,
@@ -98,18 +100,24 @@ class ShipSeeker:
         cropped_path = os.path.join(self.temp_dir, "cropped_geotiff.tif")
         self.crop_image_using_extent(geotiff_path, self.extent_str, cropped_path) # Todo, use this instead
 
-
         # TODO: Just Testing...
         interpolated_path = os.path.join(self.temp_dir, "cropped_interpolated_geotiff.tif")
         linear_interpolate_transparent(cropped_path, interpolated_path)
 
         width, height = get_tiff_size(interpolated_path)
+
+        # TODO: Just Thinking...
+        # Check size of geotiff here, if it's above a certain size, break into X number
+        # of pieces and run evaluation on each of those (still breaking into their own chunks)
+        # and then piece back together at the end
         
         # Create cropped images in /temp_chunks/
         rows, cols = create_chunks(interpolated_path, self.temp_dir)
         ignore_images = [cropped_path, interpolated_path, geotiff_path]
 
         input_files = glob.glob(os.path.join(self.temp_dir, "*"))
+
+        print("About to enter outer testing loop")
 
         # Copy metadata to model output
         for i, input_file_path in enumerate(input_files):
@@ -123,13 +131,30 @@ class ShipSeeker:
 
             set_progress(int(100.0*i/len(input_files)))
 
+        print("Finished outer testing loop")
+
+        print(f"Output path: {output_path}")
 
         # Merge the chunks
         merge_chunks(self.temp_dir, rows, cols, output_path, save_model_output)
+
+        print(f"Output path after merge: {output_path}")
+
+        print("SeekerHere1")
+        # print(f"Tiff width, height: {get_tiff_size(output_path)}")
+        # print(f"Cropping down to ({width}, {height})")
+
         crop_tiff(output_path, output_path, width, height)
 
+        print("SeekerHere2")
+
         merge_transparent_parts(cropped_path, output_path, output_path)
+
+        print("SeekerHere3")
+
         copy_tiff_metadata(cropped_path, output_path)
+
+        print("SeekerHere4")
 
 def printProgress(value: int):
     """ Replacement for the GUI progress bar """

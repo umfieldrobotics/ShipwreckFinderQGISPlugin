@@ -157,7 +157,7 @@ class PreprocessingWidget(QDialog):
         # Normalize the depth array
         preprocessor = PreprocessingHandler()
         ker_size_value = self.kernelSizeBox.value()
-        inpaint_rad_value = self.infillRadiusBox.value()
+        inpaint_rad_value = self.infillRadiusBox.value()        
         result_arr = preprocessor.normalize(depth_array, self.progressBar.setValue, 
                                             kernel_size=ker_size_value, inpaint_radius=inpaint_rad_value)
         
@@ -165,6 +165,8 @@ class PreprocessingWidget(QDialog):
         cv2.imwrite(output_path, result_arr)
         copy_tiff_metadata(raster_path, output_path)
 
+        # preprocessor.save_tiff_with_metadata(result_arr, raster_path, output_path)
+        
         if self.openCheckBox.isChecked():
                 output_raster_layer = QgsRasterLayer(output_path, 'Preprocessed Raster')
                 QgsProject.instance().addMapLayer(output_raster_layer, True)

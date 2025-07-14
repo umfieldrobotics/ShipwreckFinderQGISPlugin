@@ -132,34 +132,64 @@ def crop_center(image, crop_height=512, crop_width=512):
 
 def test(test_files, weight_path):
     #load the model 
+    # FOR ONE CHANNEL INPUT
     model = Unet(1, 2)
-    model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
-    model #.cuda()
 
+    # FOR TWO CHANNEL INPUT
+    # model = Unet(2, 2)
+
+    model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
+    model.cuda()
+
+    # print(f"Model device: {model.resnet_encoder.conv1.device}")
 
     output_tiff_file_names = []
     output_numpy_file_names = []
 
     #read all the images using PIL 
     for test_file in test_files:
-        image = Image.open(test_file)#np.load(test_file)
         output_file_name = test_file.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
 
+        # FOR ONE CHANNEL INPUT
+        image = Image.open(test_file)#np.load(test_file)
         #convert colormap from jet to grayscale using plt 
         # image = np.array(image)
         # image = crop_center(image, 501, 501)
 
         #resize to 501x501 
         image = image.resize((501, 501))
-
+        # print(f"Image size: {image.size}")
         og_image = np.array(image)
+        # print(f"OG Image size: {og_image.size}")
+
         gray_image = np.dot(og_image[..., :3], [0.2989, 0.5870, 0.1140]) #TODO: What are these magic numbers
         image = gray_image
         #normalize the image using the mean and std 
         image = (image - image.mean())/image.std()
         #threshold anything beyond 3 stds
         sanity = image > 3
-        image = torch.from_numpy(image).float().unsqueeze(0).unsqueeze(0)#.cuda()
+        image = torch.from_numpy(image).float().unsqueeze(0).unsqueeze(0).cuda()
+
+        # image = torch.from_numpy(image).float().unsqueeze(0).unsqueeze(0) #.cuda()
+        # print(f"Shape: {image.shape}")
+        
+        
+        # # FOR TWO CHANNEL INPUT
+        # import rasterio
+        # with rasterio.open(test_file) as src:
+        #     band1 = src.read(1).astype(np.float32)
+        #     band2 = src.read(2).astype(np.float32)
+        # from skimage.transform import resize
+        # band1 = resize(band1, (501, 501), preserve_range=True)
+        # band2 = resize(band2, (501, 501), preserve_range=True)
+
+        # band1 = (band1 - band1.mean() / band1.std())
+        # band2 = (band2 - band2.mean() / band2.std())
+        
+        # image = np.stack([band1, band2], axis=0)
+        # image = torch.from_numpy(image).unsqueeze(0).cuda()
+        
+
 
         #run the model on the image 
         pred = model(image)
