@@ -10,10 +10,11 @@ from qgisplugin.core.train import test
 from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject, QgsPointXY, QgsRasterLayer, QgsRectangle
 # from qgis.core import Qgis, QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer, QgsProject, QgsReferencedRectangle
 from osgeo import gdal, osr, gdalconst
-
+import rasterio
 
 import random
 import shutil
+
 
 # WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/mbes_unet.pt" # Original
 WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unet_lemon-oath-149_best.pt" # New one channel
@@ -102,9 +103,12 @@ class ShipSeeker:
 
         # TODO: Just Testing...
         interpolated_path = os.path.join(self.temp_dir, "cropped_interpolated_geotiff.tif")
-        linear_interpolate_transparent(cropped_path, interpolated_path)
+        # linear_interpolate_transparent(cropped_path, interpolated_path)
 
-        width, height = get_tiff_size(interpolated_path)
+        # width, height = get_tiff_size(interpolated_path)
+        width, height = get_tiff_size(cropped_path)
+
+        print(f"Width, Height = {width}, {height}")
 
         # TODO: Just Thinking...
         # Check size of geotiff here, if it's above a certain size, break into X number
@@ -112,33 +116,63 @@ class ShipSeeker:
         # and then piece back together at the end
         
         # Create cropped images in /temp_chunks/
-        rows, cols = create_chunks(interpolated_path, self.temp_dir)
+        # rows, cols = create_chunks(interpolated_path, self.temp_dir)
+        rows, cols = create_chunks(cropped_path, self.temp_dir)
+
         ignore_images = [cropped_path, interpolated_path, geotiff_path]
 
         input_files = glob.glob(os.path.join(self.temp_dir, "*"))
 
-        print("About to enter outer testing loop")
-
-        # Copy metadata to model output
-        for i, input_file_path in enumerate(input_files):
-            if input_file_path in ignore_images:
+        for file in input_files:
+            if file in ignore_images:
                 continue
+            with rasterio.open(file) as src:
+                array = src.read(1)
 
-            output_tiff_file_path = test([input_file_path], WEIGHTS_PATH)[0][0]
+            print(f"Creating npy, dtype: {array.dtype}")
+            array = array.astype(np.float64)
+            output_file_path = os.path.splitext(file)[0] + ".npy"
+            np.save(output_file_path, array)
 
+        # Printing all files in tempdir
+        # for file in os.listdir(self.temp_dir):
+        #     print(file)
+
+        # print(f"Ignore images: {ignore_images}")
+
+        # print(f"Temp dir: {self.temp_dir}")
+
+        print("About to run test function")
+
+        test(self.temp_dir, ignore_images, WEIGHTS_PATH)
+
+        print("Finished running test function")
+
+        # # Copy metadata to model output
+        # for i, input_file_path in enumerate(input_files):
+        #     if input_file_path in ignore_images:
+        #         continue
+
+        #     output_tiff_file_path = test([input_file_path], WEIGHTS_PATH)[0][0]
+
+        #     # output_tiff_file_path = test(self.temp_dir, ignore_images, WEIGHTS_PATH)[0][0]
             
-            copy_tiff_metadata(input_file_path, output_tiff_file_path)
+            
+        #     copy_tiff_metadata(input_file_path, output_tiff_file_path)
 
-            set_progress(int(100.0*i/len(input_files)))
+        #     set_progress(int(100.0*i/len(input_files)))
 
-        print("Finished outer testing loop")
-
-        print(f"Output path: {output_path}")
+        # print("Finished outer testing loop")
+        # print(f"Output path: {output_path}")
 
         # Merge the chunks
         merge_chunks(self.temp_dir, rows, cols, output_path, save_model_output)
 
-        print(f"Output path after merge: {output_path}")
+        # print("Just merged chunks")
+        # import time
+        # time.sleep(120)
+
+        # print(f"Output path after merge: {output_path}")
 
         print("SeekerHere1")
         # print(f"Tiff width, height: {get_tiff_size(output_path)}")

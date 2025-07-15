@@ -3,8 +3,10 @@ import math
 import numpy as np
 from PIL import Image
 import cv2
+import rasterio
 
 from osgeo import gdal, gdalconst
+from qgisplugin.core.data import normalize_nonzero
 
 
 def crop_tiff(input_tiff, output_tiff, width, height, start_x=0, start_y=0):
@@ -113,16 +115,17 @@ def create_chunks(input_path, output_dir, chunk_size=501):
 
             # Read and write data for each band
             for band_num in range(1, num_bands + 1):
+                print(f"Saving chunk band {band_num}")
                 band = dataset.GetRasterBand(band_num)
                 chunk_band = chunk_dataset.GetRasterBand(band_num)
 
                 data = band.ReadAsArray(x_offset, y_offset, width, height)
 
                 # PAD the data
-                new_data = np.zeros((501, 501))
-                new_data[:len(data), :len(data[0])] = data
+                # new_data = np.zeros((501,501))
+                # new_data[:len(data), :len(data[0])] = data
 
-                chunk_band.WriteArray(new_data)
+                chunk_band.WriteArray(data)
 
             # Close chunk dataset
             chunk_dataset = None
@@ -140,13 +143,14 @@ def merge_chunks(output_dir, rows, cols, output_path, save_model_output):
     # for elt in chunk_tiff_files:
     #     print(elt)
 
-    gdal_merge_cmd = f"gdal_merge.py -o {output_path} --co \"BIGTIFF=YES\" --co \"TILED=YES\" " + " ".join(chunk_tiff_files)
+    gdal_merge_cmd = f"gdal_merge.py -o {output_path} " + " ".join(chunk_tiff_files)
     # gdal_merge_cmd = gdal_merge_cmd + " > /home/smitd/Desktop/merge_log.txt 2>&1"
     # with open("/home/smitd/Desktop/gdal_cmd.txt", 'w') as f:
     #     f.write(gdal_merge_cmd)
 
     # Things to try:
     #   BIGTIFF in case it's too large for a tiff when saving (--co BIGTIFF=YES) and (--co TILED=YES)
+        # --co \"BIGTIFF=YES\" --co \"TILED=YES\"
     #   Use gdalwarp in case it's memory limitations
     #   Increase file descriptor limit (1024), using (ulimit -n 8192 <or higher>)
 
@@ -205,60 +209,62 @@ def merge_transparent_parts(image1_path, image2_path, output_path):
     Merge the transparent parts of image1 into image2.
     """
 
-    print("Merge1")
-    # FOR ONE CHANNEL INPUT
-    # Open both images
-    image1 = Image.open(image1_path).convert("RGBA")
-    image2 = Image.open(image2_path).convert("RGBA")
+    with rasterio.open(image1_path) as src1, rasterio.open(image2_path) as src2:
+        # Check size compatibility
+        if src1.width != src2.width or src1.height != src2.height:
+            raise ValueError("Both images must be the same size")
 
-    # FOR TWO CHANNEL INPUT
-    # import rasterio
-    # with rasterio.open(image1_path) as src:
-    #     data1 = src.read()
-    # with rasterio.open(image2_path) as src:
-    #     data2 = src.read()
-    # array1 = data1[0]
-    # array1 = ((array1 - array1.min()) / (array1.ptp() + 1e-6) * 255).astype(np.uint8)
-    # image1 = Image.fromarray(array1).convert("RGBA")
+        print(f"Image1 bands: {src1.count}, Image2 bands: {src2.count}")
 
-    # array2 = data2[0]
-    # array2 = ((array2 - array2.min()) / (array2.ptp() + 1e-6) * 255).astype(np.uint8)
-    # image2 = Image.fromarray(array2).convert("RGBA")
+        # Read both images
+        image1 = src1.read()
+        image2 = src2.read()
 
-    
-    # Ensure image2 is the same size as image1
-    if image1.size != image2.size:
-        raise ValueError("Both images must be the same size")
+        # image1[0] = normalize_nonzero(image1[0])
 
-    # Split image1 into its components
-    r1, g1, b1, a1 = image1.split()
-    print("Merge2")
-    # Split image2 into its components
-    r2, g2, b2, a2 = image2.split()
-    print("Merge3")
+        print("Merge2")
 
-    # Create a mask where image1 is transparent
-    transparency_mask = Image.eval(a1, lambda alpha: 255 if alpha == 0 else 0)
-    print("Merge4")
+        if src1.count == 2:
+            # Use alpha channel
+            alpha1 = image1[1]
+            transparent_mask = (alpha1 == 0)
+        elif src1.count == 1:
+            # Assume fully opaque: no transparency
+            transparent_mask = np.zeros_like(image1[0], dtype=bool)
+        else:
+            raise ValueError("Image1 must have 1 or 2 bands")
 
-    # Paste the transparent parts of image1 into image2 using the mask
-    image2.paste(image1, (0, 0), transparency_mask)
-    print("Merge5")
+        print("Merge3")
+        # Replace pixels in image2 where image1 is transparent
+        for b in range(4):  # For each band in image2 (RGBA)
+            if b < 3:
+                image2[b][transparent_mask] = image1[0][transparent_mask]
+            else:
+                image2[b][transparent_mask] = 0  # Set alpha to 0
 
-    # Save the resulting image
-    image2.save(output_path, format='TIFF')
-    print("Merge6")
+        print("Merge4")
+        # Write the result to a new file
+        profile = src2.profile
+        profile.update({
+            "count": 4,
+            "dtype": image2.dtype
+        })
+
+        with rasterio.open(output_path, 'w', **profile) as dst:
+            dst.write(image2)
+
+
 
 def linear_interpolate_transparent(input_tiff_path, output_tiff_path):
     '''Fills in gaps (alpha=0) in input image using cv2.infill'''
 
     dataset = gdal.Open(input_tiff_path, gdal.GA_ReadOnly)
+
+    original_dtype = dataset.GetRasterBand(1).DataType
     
     # Read the image bands
     bands = [dataset.GetRasterBand(i+1).ReadAsArray() for i in range(dataset.RasterCount)]
 
-    
-   
     if len(bands) == 4:
         # Separate the alpha channel 
         alpha_channel = bands[-1]
@@ -278,7 +284,7 @@ def linear_interpolate_transparent(input_tiff_path, output_tiff_path):
     
     # Save the result as a new GeoTIFF
     driver = gdal.GetDriverByName("GTiff")
-    out_dataset = driver.Create(output_tiff_path, dataset.RasterXSize, dataset.RasterYSize, result_image.shape[2], gdal.GDT_Byte)
+    out_dataset = driver.Create(output_tiff_path, dataset.RasterXSize, dataset.RasterYSize, result_image.shape[2], original_dtype) #gdal.GDT_Byte
     
     for i in range(result_image.shape[2]):
         out_band = out_dataset.GetRasterBand(i+1)
@@ -318,3 +324,28 @@ def copy_tiff_metadata(input_file_path, output_file_path):
 
     del(tif_with_RPCs)
     del(tif_without_RPCs)
+
+
+def read_as_rgba(path):
+    with rasterio.open(path) as src:
+        bands = src.read()  # shape (count, H, W)
+        if src.count == 2:
+            gray, alpha = bands
+            rgba = np.stack([gray, gray, gray, alpha])
+        elif src.count == 4:
+            rgba = bands[:4]  # Already RGBA
+        elif src.count == 1:
+            gray = bands[0]
+            rgba = np.stack([gray, gray, gray, np.full_like(gray, 255)])
+        elif src.count == 3:
+            r, g, b = bands
+            a = np.full_like(r, 255)
+            rgba = np.stack([r, g, b, a])
+        else:
+            raise ValueError(f"Unsupported band count: {src.count}")
+        return rgba  # shape: (4, H, W)
+    
+def np_rgba_to_pil(image_np):
+    # image_np: shape (4, H, W)
+    image_np = np.transpose(image_np, (1, 2, 0))  # → (H, W, 4)
+    return Image.fromarray(image_np.astype(np.uint8), mode="RGBA")

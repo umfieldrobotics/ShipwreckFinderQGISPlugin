@@ -1,4 +1,5 @@
 import torch 
+import cv2
 
 from qgisplugin.core.models import *
 from tqdm import tqdm 
@@ -10,6 +11,8 @@ import wandb
 import numpy as np
 import os 
 import glob 
+from qgisplugin.core.data import MBESDataset
+from qgisplugin.core.tiff_utils import copy_tiff_metadata
 
 class CustomDataset(Dataset):
     def __init__(self, root_dir, transform=None, byt=False):
@@ -130,94 +133,87 @@ def crop_center(image, crop_height=512, crop_width=512):
     start_x = (width - crop_width) // 2
     return image[start_y:start_y + crop_height, start_x:start_x + crop_width]
 
-def test(test_files, weight_path):
+
+def test(test_file_dir, ignore_files, weight_path):
     #load the model 
     # FOR ONE CHANNEL INPUT
     model = Unet(1, 2)
-
     # FOR TWO CHANNEL INPUT
     # model = Unet(2, 2)
 
     model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
-    model.cuda()
+    if torch.cuda.is_available():
+        model.cuda()
+    model.eval()
 
     # print(f"Model device: {model.resnet_encoder.conv1.device}")
 
-    output_tiff_file_names = []
-    output_numpy_file_names = []
+    # output_tiff_file_names = []
+    # output_numpy_file_names = []
 
-    #read all the images using PIL 
-    for test_file in test_files:
-        output_file_name = test_file.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
+    dataset = MBESDataset(test_file_dir, ignore_files, using_hillshade=False, using_inpainted=True)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
 
-        # FOR ONE CHANNEL INPUT
-        image = Image.open(test_file)#np.load(test_file)
-        #convert colormap from jet to grayscale using plt 
-        # image = np.array(image)
-        # image = crop_center(image, 501, 501)
+    with torch.no_grad():
+        for data in dataloader:
+            # Get data and prep file paths
+            image = data['image'].cuda()
+            image_file_path = data['metadata']['label_name'][0] # "Label" is the corresponding .tif file for metadata
 
-        #resize to 501x501 
-        image = image.resize((501, 501))
-        # print(f"Image size: {image.size}")
-        og_image = np.array(image)
-        # print(f"OG Image size: {og_image.size}")
+            save_name = os.path.splitext(os.path.basename(image_file_path))[0] + ".png"
+            # print(image.cpu().numpy())
+            print("Saving chunk")
+            cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_getitem", save_name), image.cpu().numpy().squeeze()*255)
 
-        gray_image = np.dot(og_image[..., :3], [0.2989, 0.5870, 0.1140]) #TODO: What are these magic numbers
-        image = gray_image
-        #normalize the image using the mean and std 
-        image = (image - image.mean())/image.std()
-        #threshold anything beyond 3 stds
-        sanity = image > 3
-        image = torch.from_numpy(image).float().unsqueeze(0).unsqueeze(0).cuda()
+            output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
 
-        # image = torch.from_numpy(image).float().unsqueeze(0).unsqueeze(0) #.cuda()
-        # print(f"Shape: {image.shape}")
-        
-        
-        # # FOR TWO CHANNEL INPUT
-        # import rasterio
-        # with rasterio.open(test_file) as src:
-        #     band1 = src.read(1).astype(np.float32)
-        #     band2 = src.read(2).astype(np.float32)
-        # from skimage.transform import resize
-        # band1 = resize(band1, (501, 501), preserve_range=True)
-        # band2 = resize(band2, (501, 501), preserve_range=True)
+            print(f"Min: {image.min()}, Max: {image.max()}, Size: {image.shape}")
 
-        # band1 = (band1 - band1.mean() / band1.std())
-        # band2 = (band2 - band2.mean() / band2.std())
-        
-        # image = np.stack([band1, band2], axis=0)
-        # image = torch.from_numpy(image).unsqueeze(0).cuda()
-        
+            # Run through model
+            pred = model(image)
 
+            # Save the non-thresholded image to npy array
+            pred_numpy = pred.detach().cpu().numpy()
+            pred_numpy_filename = os.path.splitext(output_file_name)[0] + ".npy"
+            np.save(pred_numpy_filename, pred_numpy)
 
-        #run the model on the image 
-        pred = model(image)
+            pred = pred.argmax(dim=1)
+            pred = pred.cpu().detach().numpy()
+            pred = np.expand_dims(pred, axis=0)
+            pred = np.squeeze(pred)
 
-        # Save the non-thresholded image to npy array
-        pred_numpy = pred.detach().cpu().numpy()
-        pred_numpy_filename = os.path.splitext(output_file_name)[0] + ".npy"
-        np.save(pred_numpy_filename, pred_numpy)
-        output_numpy_file_names.append(pred_numpy_filename)
+            # Save tiff and copy metadata
+            plt.imsave(output_file_name, pred, cmap="jet")
+            copy_tiff_metadata(image_file_path, output_file_name)
 
-        pred = pred.argmax(dim=1)
-        pred = pred.cpu().detach().numpy()
-        pred = np.expand_dims(pred, axis=0)
-        pred = np.squeeze(pred)
+    # import time
+    # time.sleep(20)
 
-        #create an array with the image and the prediction overlayed
-        # pred_mask = np.zeros((501, 501, 3))
-        # pred_mask[...,1] = pred
-        # overlay = np.zeros((501, 501))
-        # overlay = 0.8*og_image/255.0 + 0.2*pred_mask
-        # plt.imshow(pred_mask)
+# # Load the model
+#     model = Unet(1, 2)
+#     model.load_state_dict(torch.load(weight_path))
+#     model.cuda()
 
-        #save the image to the same directory 
-        plt.imsave(output_file_name, pred, cmap="jet")
-        output_tiff_file_names.append(output_file_name)
-        
+#     model.eval()
 
-    return output_tiff_file_names, output_numpy_file_names
+#     test_dataset = MBESDataset(test_path, byt=False, using_hillshade=False, using_inpainted=True)
+#     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=1)
+
+#     with torch.no_grad():
+#         for data in test_loader:
+#             image = data['image'].cuda()
+#             label = data['label'].cuda()
+
+#             pred = model(image)
+#             pred = pred.argmax(dim=1)
+
+#             label = label.cpu().detach().numpy()
+#             pred = pred.cpu().detach().numpy()
+
+#             valid_data_mask = (label.flatten() != -1)  # Ignore invalid pixels
+#             label_flat = label.flatten()[valid_data_mask]
+#             pred_flat = pred.flatten()[valid_data_mask]
+
 
 def main(): 
     # train("./", 1000, 1e-4)
