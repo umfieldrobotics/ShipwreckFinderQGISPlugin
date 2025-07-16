@@ -4,7 +4,7 @@ import os
 import glob
 import numpy as np
 from osgeo import gdal
-from qgisplugin.core.tiff_utils import crop_tiff, create_chunks, merge_chunks, get_tiff_size, merge_transparent_parts, copy_tiff_metadata, linear_interpolate_transparent
+from qgisplugin.core.tiff_utils import crop_tiff, create_chunks, merge_chunks, get_tiff_size, merge_transparent_parts, copy_tiff_metadata, linear_interpolate_transparent, remove_invalid_pixels
 from qgisplugin.core.train import test
 
 from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject, QgsPointXY, QgsRasterLayer, QgsRectangle
@@ -185,10 +185,16 @@ class ShipSeeker:
         merge_transparent_parts(cropped_path, output_path, output_path)
 
         print("SeekerHere3")
-
+        
+        print("About to run invalid pixel crop")
+        remove_invalid_pixels(cropped_path, output_path, output_path)
+        print("Done running invalid pixel crop")
         copy_tiff_metadata(cropped_path, output_path)
 
         print("SeekerHere4")
+
+        # Crop out anything that wasn't part of the raster to begin with
+        # Thoughts: use cropped_path as mask
 
 def printProgress(value: int):
     """ Replacement for the GUI progress bar """

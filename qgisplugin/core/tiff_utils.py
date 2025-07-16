@@ -326,26 +326,40 @@ def copy_tiff_metadata(input_file_path, output_file_path):
     del(tif_without_RPCs)
 
 
-def read_as_rgba(path):
-    with rasterio.open(path) as src:
-        bands = src.read()  # shape (count, H, W)
-        if src.count == 2:
-            gray, alpha = bands
-            rgba = np.stack([gray, gray, gray, alpha])
-        elif src.count == 4:
-            rgba = bands[:4]  # Already RGBA
-        elif src.count == 1:
-            gray = bands[0]
-            rgba = np.stack([gray, gray, gray, np.full_like(gray, 255)])
-        elif src.count == 3:
-            r, g, b = bands
-            a = np.full_like(r, 255)
-            rgba = np.stack([r, g, b, a])
-        else:
-            raise ValueError(f"Unsupported band count: {src.count}")
-        return rgba  # shape: (4, H, W)
-    
-def np_rgba_to_pil(image_np):
-    # image_np: shape (4, H, W)
-    image_np = np.transpose(image_np, (1, 2, 0))  # → (H, W, 4)
-    return Image.fromarray(image_np.astype(np.uint8), mode="RGBA")
+def remove_invalid_pixels(cropped_path, input_path, output_path):
+    with rasterio.open(cropped_path) as crp, rasterio.open(input_path) as inp:
+        cropped = crp.read(1)
+        data = inp.read()
+        # NO_DATA = -9999
+        # print(f"Cropped dim: {cropped.shape}, Input dims: {input.shape}")
+        # print(f"Cropped corner val: {cropped[0, 0]}, Cropped center val: {cropped[500, 700]}")
+        # cv2.imwrite("/home/smitd/Documents/Copied_Temp_Chunks/cropped_out.png", cropped)
+        # print(f"Cropped band: {crp.count}, Input band: {inp.count}")
+
+        invalid_mask = ((cropped >= 1000) | (cropped <= -1000)).astype(np.uint8)
+        
+        # invalid_mask_3d = invalid_mask[np.newaxis, :, :] # shape (1, H, W)
+        # invalid_mask_3d = np.repeat(invalid_mask_3d, data.shape[0], axis=0)
+
+        # data[invalid_mask_3d == 1] = NO_DATA
+        data[0][invalid_mask == 1] = 0
+        data[1][invalid_mask == 1] = 0
+        data[2][invalid_mask == 1] = 127
+        data[3][:,:] = 255
+
+        # nodata_mask = np.any(data[3] == NO_DATA, axis=0) # shape (H, W)
+        # data[3] = np.where(nodata_mask, 0, 255).astype(np.uint8)
+
+        profile = inp.profile
+        profile.update(
+            dtype=rasterio.uint8,
+            count=data.shape[0]
+        )
+
+        data = data.astype(np.uint8)
+
+        with rasterio.open(output_path, 'w', **profile) as dst:
+            dst.write(data.astype(np.float32))
+
+        
+
