@@ -134,7 +134,7 @@ def crop_center(image, crop_height=512, crop_width=512):
     return image[start_y:start_y + crop_height, start_x:start_x + crop_width]
 
 
-def test(test_file_dir, ignore_files, weight_path):
+def test(test_file_dir, ignore_files, weight_path, set_progress: callable = None):
     #load the model 
     # FOR ONE CHANNEL INPUT
     model = Unet(1, 2)
@@ -155,19 +155,19 @@ def test(test_file_dir, ignore_files, weight_path):
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
 
     with torch.no_grad():
-        for data in dataloader:
+        for i, data in enumerate(dataloader):
             # Get data and prep file paths
             image = data['image'].cuda()
             image_file_path = data['metadata']['label_name'][0] # "Label" is the corresponding .tif file for metadata
 
-            save_name = os.path.splitext(os.path.basename(image_file_path))[0] + ".png"
+            # save_name = os.path.splitext(os.path.basename(image_file_path))[0] + ".png"
             # print(image.cpu().numpy())
-            print("Saving chunk")
-            cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_getitem", save_name), image.cpu().numpy().squeeze()*255)
+            # print("Saving chunk")
+            # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_getitem", save_name), image.cpu().numpy().squeeze()*255)
 
             output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
 
-            print(f"Min: {image.min()}, Max: {image.max()}, Size: {image.shape}")
+            # print(f"Min: {image.min()}, Max: {image.max()}, Size: {image.shape}")
 
             # Run through model
             pred = model(image)
@@ -185,6 +185,8 @@ def test(test_file_dir, ignore_files, weight_path):
             # Save tiff and copy metadata
             plt.imsave(output_file_name, pred, cmap="jet")
             copy_tiff_metadata(image_file_path, output_file_name)
+
+            set_progress(20 + int((i * 60) // len(dataloader.dataset)))
 
     # import time
     # time.sleep(20)

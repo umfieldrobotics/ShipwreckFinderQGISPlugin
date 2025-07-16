@@ -106,7 +106,7 @@ class MBESDataset(Dataset):
         # with rasterio.open(image_name) as src:
         #     og_image = src.read(1)
 
-        print(f"\t\t\tmin: {np.min(og_image)}, max: {np.max(og_image)}")
+        # print(f"\t\t\tmin: {np.min(og_image)}, max: {np.max(og_image)}")
 
         if self.using_inpainted: # Compute inpainted image
             if og_image.ndim == 3:
@@ -116,7 +116,7 @@ class MBESDataset(Dataset):
             inpaint_mask = ((og_image >= 1000) | (og_image <= -1000)).astype(np.uint8)
             og_image = cv2.inpaint(og_image.astype(np.float32), inpaint_mask, inpaintRadius=8, flags=cv2.INPAINT_NS)
 
-        print(f"\t\t\tmin: {np.min(og_image)}, max: {np.max(og_image)}")
+        # print(f"\t\t\tmin: {np.min(og_image)}, max: {np.max(og_image)}")
 
         # np.save(os.path.join("/home/smitd/Documents/Inpainted_chunks", file_name), og_image)
 

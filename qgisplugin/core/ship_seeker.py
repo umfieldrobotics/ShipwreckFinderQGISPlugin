@@ -4,7 +4,7 @@ import os
 import glob
 import numpy as np
 from osgeo import gdal
-from qgisplugin.core.tiff_utils import crop_tiff, create_chunks, merge_chunks, get_tiff_size, merge_transparent_parts, copy_tiff_metadata, linear_interpolate_transparent, remove_invalid_pixels
+from qgisplugin.core.tiff_utils import crop_tiff, create_chunks, merge_chunks, get_tiff_size, merge_transparent_parts, copy_tiff_metadata, linear_interpolate_transparent, remove_invalid_pixels, ensure_valid_nodata
 from qgisplugin.core.train import test
 
 from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject, QgsPointXY, QgsRasterLayer, QgsRectangle
@@ -89,6 +89,11 @@ class ShipSeeker:
         """
         The core of the plugin
         """
+        
+        # Runtime tracking
+        import time
+        start_time = time.time()
+        
 
         # Output path for chunks
         set_progress(1)
@@ -96,19 +101,24 @@ class ShipSeeker:
         # Export the raster as a geotiff
         geotiff_path = os.path.join(self.temp_dir, "exported_geotiff.tif")
         export_raster_as_geotiff(self.raster_layer, geotiff_path)
+        set_progress(5)
 
         #Crop the image using the extent
         cropped_path = os.path.join(self.temp_dir, "cropped_geotiff.tif")
         self.crop_image_using_extent(geotiff_path, self.extent_str, cropped_path) # Todo, use this instead
+        set_progress(10)
+
+        # Ensure nodata values are valid
+        # nodata_path = os.path.join(self.temp_dir, "nodata_geotiff.tif")
+        ensure_valid_nodata(cropped_path, cropped_path)
 
         # TODO: Just Testing...
         interpolated_path = os.path.join(self.temp_dir, "cropped_interpolated_geotiff.tif")
         # linear_interpolate_transparent(cropped_path, interpolated_path)
-
         # width, height = get_tiff_size(interpolated_path)
         width, height = get_tiff_size(cropped_path)
-
-        print(f"Width, Height = {width}, {height}")
+        set_progress(15)
+        # print(f"Width, Height = {width}, {height}")
 
         # TODO: Just Thinking...
         # Check size of geotiff here, if it's above a certain size, break into X number
@@ -118,9 +128,7 @@ class ShipSeeker:
         # Create cropped images in /temp_chunks/
         # rows, cols = create_chunks(interpolated_path, self.temp_dir)
         rows, cols = create_chunks(cropped_path, self.temp_dir)
-
         ignore_images = [cropped_path, interpolated_path, geotiff_path]
-
         input_files = glob.glob(os.path.join(self.temp_dir, "*"))
 
         for file in input_files:
@@ -129,10 +137,12 @@ class ShipSeeker:
             with rasterio.open(file) as src:
                 array = src.read(1)
 
-            print(f"Creating npy, dtype: {array.dtype}")
+            # print(f"Creating npy, dtype: {array.dtype}")
             array = array.astype(np.float64)
             output_file_path = os.path.splitext(file)[0] + ".npy"
             np.save(output_file_path, array)
+
+        set_progress(20)
 
         # Printing all files in tempdir
         # for file in os.listdir(self.temp_dir):
@@ -142,11 +152,11 @@ class ShipSeeker:
 
         # print(f"Temp dir: {self.temp_dir}")
 
-        print("About to run test function")
+        # print("About to run test function")
 
-        test(self.temp_dir, ignore_images, WEIGHTS_PATH)
+        test(self.temp_dir, ignore_images, WEIGHTS_PATH, set_progress)
 
-        print("Finished running test function")
+        # print("Finished running test function")
 
         # # Copy metadata to model output
         # for i, input_file_path in enumerate(input_files):
@@ -167,31 +177,36 @@ class ShipSeeker:
 
         # Merge the chunks
         merge_chunks(self.temp_dir, rows, cols, output_path, save_model_output)
-
+        set_progress(85)
         # print("Just merged chunks")
         # import time
         # time.sleep(120)
 
         # print(f"Output path after merge: {output_path}")
 
-        print("SeekerHere1")
+        # print("SeekerHere1")
         # print(f"Tiff width, height: {get_tiff_size(output_path)}")
         # print(f"Cropping down to ({width}, {height})")
 
         crop_tiff(output_path, output_path, width, height)
-
-        print("SeekerHere2")
+        set_progress(90)
+        # print("SeekerHere2")
 
         merge_transparent_parts(cropped_path, output_path, output_path)
 
-        print("SeekerHere3")
+        # print("SeekerHere3")
         
-        print("About to run invalid pixel crop")
         remove_invalid_pixels(cropped_path, output_path, output_path)
-        print("Done running invalid pixel crop")
-        copy_tiff_metadata(cropped_path, output_path)
 
-        print("SeekerHere4")
+        copy_tiff_metadata(cropped_path, output_path)
+        set_progress(95)
+
+        # print("SeekerHere4")
+
+        # Runtime tracking
+        end_time = time.time()
+        runtime = end_time - start_time
+        print(f"Runtime was: {runtime} seconds")
 
         # Crop out anything that wasn't part of the raster to begin with
         # Thoughts: use cropped_path as mask
