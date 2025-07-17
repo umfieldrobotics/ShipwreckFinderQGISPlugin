@@ -45,12 +45,12 @@ def normalize_nonzero(image):
     return image
 
 class MBESDataset(Dataset):
-    def __init__(self, root_dir, ignore_files, transform=None, byt=False, aug_multiplier=0, using_hillshade=False, using_inpainted=False):
+    def __init__(self, root_dir, ignore_files, transform=None, byt=False, aug_multiplier=0, using_hillshade=False, using_inpainted=False, resize_to_div_16=False):
         self.root_dir = root_dir
         self.transform = transform
         self.byt = byt
         self.aug_multiplier = aug_multiplier  # Number of additional augmented samples per image
-        self.img_size = 501
+        self.img_size = 512 if resize_to_div_16 else 501 # 224
         
         self.using_hillshade = using_hillshade
         self.using_inpainted = using_inpainted

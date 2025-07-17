@@ -7,6 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from PIL import Image
 from matplotlib import pyplot as plt
+from torch.autograd import Variable
 import wandb
 import numpy as np
 import os 
@@ -134,87 +135,109 @@ def crop_center(image, crop_height=512, crop_width=512):
     return image[start_y:start_y + crop_height, start_x:start_x + crop_width]
 
 
-def test(test_file_dir, ignore_files, weight_path, set_progress: callable = None):
-    #load the model 
-    # FOR ONE CHANNEL INPUT
-    model = Unet(1, 2)
-    # FOR TWO CHANNEL INPUT
-    # model = Unet(2, 2)
+# BASNET TEST FUNCTION
+def test(test_path, ignore_files, weight_path, set_progress: callable=None):
+    threshold = 0.1
 
-    model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
-    if torch.cuda.is_available():
-        model.cuda()
+    # Load the model
+    model = BASNet(3, 1)
+    model.load_state_dict(torch.load(weight_path))
+    model.cuda()
+
     model.eval()
 
-    # print(f"Model device: {model.resnet_encoder.conv1.device}")
+    test_dataset = MBESDataset(test_path, ignore_files, using_hillshade=False, using_inpainted=True, resize_to_div_16=True)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0)
 
-    # output_tiff_file_names = []
-    # output_numpy_file_names = []
+    print("Post dataloader")
 
-    dataset = MBESDataset(test_file_dir, ignore_files, using_hillshade=False, using_inpainted=True)
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
+    # with torch.no_grad():
+    for i, data in enumerate(test_loader):
+        image = data['image'].type(torch.FloatTensor)
+        image = torch.hstack([image, image, image])
+        image_file_path = data['metadata']['label_name'][0] # "Label" is the corresponding .tif file for metadata
+        output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
+        
+        image_v = Variable(image, requires_grad=True).cuda()
 
-    with torch.no_grad():
-        for i, data in enumerate(dataloader):
-            # Get data and prep file paths
-            image = data['image'].cuda()
-            image_file_path = data['metadata']['label_name'][0] # "Label" is the corresponding .tif file for metadata
+        _, d1, _, _, _, _, _, _ = model(image_v)
 
-            # save_name = os.path.splitext(os.path.basename(image_file_path))[0] + ".png"
-            # print(image.cpu().numpy())
-            # print("Saving chunk")
-            # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_getitem", save_name), image.cpu().numpy().squeeze()*255)
+        pred = d1[:,0,:,:]
+        pred = normPRED(pred)
+        pred = pred.cpu().detach().numpy()
+        
+        # pred_numpy_filename = os.path.splitext(output_file_name)[0] + ".npy"
+        # np.save(pred_numpy_filename, pred)
 
-            output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
+        pred = (pred >= threshold).astype(np.int32)
+        pred = np.expand_dims(pred, axis=1)
+        pred = np.squeeze(pred)
 
-            # print(f"Min: {image.min()}, Max: {image.max()}, Size: {image.shape}")
+        print(f"Predictin shape: {pred.shape}")
+        
+        plt.imsave(output_file_name, pred, cmap="jet")
+        copy_tiff_metadata(image_file_path, output_file_name)
 
-            # Run through model
-            pred = model(image)
+        set_progress(20 + int((i * 60) // len(test_loader.dataset)))
 
-            # Save the non-thresholded image to npy array
-            pred_numpy = pred.detach().cpu().numpy()
-            pred_numpy_filename = os.path.splitext(output_file_name)[0] + ".npy"
-            np.save(pred_numpy_filename, pred_numpy)
 
-            pred = pred.argmax(dim=1)
-            pred = pred.cpu().detach().numpy()
-            pred = np.expand_dims(pred, axis=0)
-            pred = np.squeeze(pred)
 
-            # Save tiff and copy metadata
-            plt.imsave(output_file_name, pred, cmap="jet")
-            copy_tiff_metadata(image_file_path, output_file_name)
-
-            set_progress(20 + int((i * 60) // len(dataloader.dataset)))
-
-    # import time
-    # time.sleep(20)
-
-# # Load the model
+# UNET TEST FUNCTION
+# def test(test_file_dir, ignore_files, weight_path, set_progress: callable = None):
+#     #load the model 
+#     # FOR ONE CHANNEL INPUT
 #     model = Unet(1, 2)
-#     model.load_state_dict(torch.load(weight_path))
-#     model.cuda()
+#     # FOR TWO CHANNEL INPUT
+#     # model = Unet(2, 2)
 
+#     model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
+#     if torch.cuda.is_available():
+#         model.cuda()
 #     model.eval()
 
-#     test_dataset = MBESDataset(test_path, byt=False, using_hillshade=False, using_inpainted=True)
-#     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=1)
+#     # print(f"Model device: {model.resnet_encoder.conv1.device}")
+
+#     # output_tiff_file_names = []
+#     # output_numpy_file_names = []
+
+#     dataset = MBESDataset(test_file_dir, ignore_files, using_hillshade=False, using_inpainted=True)
+#     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
 
 #     with torch.no_grad():
-#         for data in test_loader:
+#         for i, data in enumerate(dataloader):
+#             # Get data and prep file paths
 #             image = data['image'].cuda()
-#             label = data['label'].cuda()
+#             image_file_path = data['metadata']['label_name'][0] # "Label" is the corresponding .tif file for metadata
 
+#             # save_name = os.path.splitext(os.path.basename(image_file_path))[0] + ".png"
+#             # print(image.cpu().numpy())
+#             # print("Saving chunk")
+#             # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_getitem", save_name), image.cpu().numpy().squeeze()*255)
+
+#             output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
+
+#             # print(f"Min: {image.min()}, Max: {image.max()}, Size: {image.shape}")
+
+#             # Run through model
 #             pred = model(image)
+
+#             # Save the non-thresholded image to npy array
+#             pred_numpy = pred.detach().cpu().numpy()
+#             pred_numpy_filename = os.path.splitext(output_file_name)[0] + ".npy"
+#             np.save(pred_numpy_filename, pred_numpy)
+
 #             pred = pred.argmax(dim=1)
-
-#             label = label.cpu().detach().numpy()
 #             pred = pred.cpu().detach().numpy()
+#             pred = np.expand_dims(pred, axis=0)
+#             pred = np.squeeze(pred)
 
-#             valid_data_mask = (label.flatten() != -1)  # Ignore invalid pixels
-#             label_flat = label.flatten()[valid_data_mask]
-#             pred_flat = pred.flatten()[valid_data_mask]
+#             print(f"Prediction shape: {pred.shape}")
+
+#             # Save tiff and copy metadata
+#             plt.imsave(output_file_name, pred, cmap="jet")
+#             copy_tiff_metadata(image_file_path, output_file_name)
+
+#             set_progress(20 + int((i * 60) // len(dataloader.dataset)))
 
 
 def main(): 

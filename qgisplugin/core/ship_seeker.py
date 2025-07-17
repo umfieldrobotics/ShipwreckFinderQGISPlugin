@@ -17,8 +17,9 @@ import shutil
 
 
 # WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/mbes_unet.pt" # Original
-WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unet_lemon-oath-149_best.pt" # New one channel
+# WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unet_lemon-oath-149_best.pt" # New one channel
 # WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unet_aux_effortless-dust-150_best.pt" # New hillshade
+WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/fallen-bush-189_best.pt" # New BASNet
 
 from qgis.core import (
     QgsRasterFileWriter,
@@ -59,7 +60,7 @@ class ShipSeeker:
                                     outputSRS=f"EPSG:{epsg_id}",
                                     format="GTiff"
                                 )
-        
+
     # geo_trans = tif_with_RPCs.GetGeoTransform()
     # tif_without_RPCs.SetGeoTransform(geo_trans)
     # tif_without_RPCs.SetProjection(tif_with_RPCs.GetProjection())
@@ -127,7 +128,14 @@ class ShipSeeker:
         
         # Create cropped images in /temp_chunks/
         # rows, cols = create_chunks(interpolated_path, self.temp_dir)
-        rows, cols = create_chunks(cropped_path, self.temp_dir)
+
+        basnet_flag = True
+        if basnet_flag:
+            rows, cols = create_chunks(cropped_path, self.temp_dir, 512) # 224
+        else:
+            rows, cols = create_chunks(cropped_path, self.temp_dir)
+
+
         ignore_images = [cropped_path, interpolated_path, geotiff_path]
         input_files = glob.glob(os.path.join(self.temp_dir, "*"))
 
@@ -152,11 +160,11 @@ class ShipSeeker:
 
         # print(f"Temp dir: {self.temp_dir}")
 
-        # print("About to run test function")
+        print("About to run test function")
 
         test(self.temp_dir, ignore_images, WEIGHTS_PATH, set_progress)
 
-        # print("Finished running test function")
+        print("Finished running test function")
 
         # # Copy metadata to model output
         # for i, input_file_path in enumerate(input_files):
