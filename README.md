@@ -1,4 +1,4 @@
-# Shipwreck Seeker QGIS Plugin
+# Shipwreck Finder QGIS Plugin
 
 This [QGIS](https://www.qgis.org/en/site/) plugin finds shipwrecks from multibeam sonar data. 
 
