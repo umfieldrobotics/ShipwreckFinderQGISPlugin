@@ -5,6 +5,7 @@ from qgisplugin.core.models import *
 from tqdm import tqdm 
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
+import torch.nn.functional as F
 from PIL import Image
 from matplotlib import pyplot as plt
 from torch.autograd import Variable
@@ -12,8 +13,13 @@ import wandb
 import numpy as np
 import os 
 import glob 
+import argparse
 from qgisplugin.core.data import MBESDataset
 from qgisplugin.core.tiff_utils import copy_tiff_metadata
+
+
+from qgisplugin.core.hrnet.seg_hrnet_ocr import *
+from qgisplugin.core.hrnet.config import config, update_config
 
 class CustomDataset(Dataset):
     def __init__(self, root_dir, transform=None, byt=False):
@@ -151,34 +157,34 @@ def test(test_path, ignore_files, weight_path, set_progress: callable=None):
 
     print("Post dataloader")
 
-    # with torch.no_grad():
-    for i, data in enumerate(test_loader):
-        image = data['image'].type(torch.FloatTensor)
-        image = torch.hstack([image, image, image])
-        image_file_path = data['metadata']['label_name'][0] # "Label" is the corresponding .tif file for metadata
-        output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
-        
-        image_v = Variable(image, requires_grad=True).cuda()
+    with torch.no_grad():
+        for i, data in enumerate(test_loader):
+            image = data['image'].type(torch.FloatTensor)
+            image = torch.hstack([image, image, image])
+            image_file_path = data['metadata']['label_name'][0] # "Label" is the corresponding .tif file for metadata
+            output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
+            
+            image_v = Variable(image, requires_grad=True).cuda()
 
-        _, d1, _, _, _, _, _, _ = model(image_v)
+            _, d1, _, _, _, _, _, _ = model(image_v)
 
-        pred = d1[:,0,:,:]
-        pred = normPRED(pred)
-        pred = pred.cpu().detach().numpy()
-        
-        # pred_numpy_filename = os.path.splitext(output_file_name)[0] + ".npy"
-        # np.save(pred_numpy_filename, pred)
+            pred = d1[:,0,:,:]
+            pred = normPRED(pred)
+            pred = pred.cpu().detach().numpy()
+            
+            # pred_numpy_filename = os.path.splitext(output_file_name)[0] + ".npy"
+            # np.save(pred_numpy_filename, pred)
 
-        pred = (pred >= threshold).astype(np.int32)
-        pred = np.expand_dims(pred, axis=1)
-        pred = np.squeeze(pred)
+            pred = (pred >= threshold).astype(np.int32)
+            pred = np.expand_dims(pred, axis=1)
+            pred = np.squeeze(pred)
 
-        print(f"Predictin shape: {pred.shape}")
-        
-        plt.imsave(output_file_name, pred, cmap="jet")
-        copy_tiff_metadata(image_file_path, output_file_name)
+            print(f"Predictin shape: {pred.shape}")
+            
+            plt.imsave(output_file_name, pred, cmap="jet")
+            copy_tiff_metadata(image_file_path, output_file_name)
 
-        set_progress(20 + int((i * 60) // len(test_loader.dataset)))
+            set_progress(20 + int((i * 60) // len(test_loader.dataset)))
 
 
 
@@ -239,6 +245,66 @@ def test(test_path, ignore_files, weight_path, set_progress: callable=None):
 
 #             set_progress(20 + int((i * 60) // len(dataloader.dataset)))
 
+# HRNET TEST FUNCTION
+# def test(test_file_dir, ignore_files, weight_path, set_progress: callable = None):
+#     a = argparse.Namespace(cfg='hrnet/config/hrnet_config.py',
+#                                    local_rank=-1,
+#                                    opts=[],
+#                                    seed=304)
+#     update_config(config, a)
+
+#     model = get_seg_model(config)
+
+#     print("conv1 shape:", model.conv1.weight.shape)
+
+#     model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
+#     if torch.cuda.is_available():
+#         model.cuda()
+#     model.eval()
+
+#     dataset = MBESDataset(test_file_dir, ignore_files, using_hillshade=False, using_inpainted=True)
+#     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
+
+#     with torch.no_grad():
+#         for i, data in enumerate(dataloader):
+#             image = data['image'].cuda()
+#             # image = torch.hstack([image, image, image])
+#             image_file_path = data['metadata']['label_name'][0]
+#             output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
+
+#             # print(f"Image shape: {image.shape}")
+
+#             pred = model(image)[0]
+#             # print(f"Pred shape before interpolate: {pred.shape}")
+#             pred = F.interpolate(pred, size=image.shape[2:], mode='bilinear', align_corners=True)
+#             # print(f"Post model shape: {pred.shape}")
+#             pred = pred.argmax(dim=1)
+#             pred = pred.cpu().detach().numpy()
+#             pred = np.squeeze(pred)
+
+#             # print(f"Prediction shape pre-contour: {pred.shape}")
+            
+#             # Remove small contours
+#             min_area = 150  # adjust this value as needed
+
+#             pred = pred.astype(np.uint8)
+#             contours, _ = cv2.findContours(pred, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+#             cleaned = np.zeros_like(pred)
+#             for cnt in contours:
+#                 area = cv2.contourArea(cnt)
+#                 if area >= min_area:
+#                     cv2.drawContours(cleaned, [cnt], -1, 1, thickness=cv2.FILLED)
+#                 # else:
+#                 #     print(f"Removing contour with area {area}")
+#             pred = cleaned.astype(np.int32)
+
+#             # print(f"Prediction shape post-contour: {pred.shape}")
+
+#             # Save tiff and copy metadata
+#             plt.imsave(output_file_name, pred, cmap="jet")
+#             copy_tiff_metadata(image_file_path, output_file_name)
+
+#             set_progress(20 + int((i * 60) // len(dataloader.dataset)))
 
 def main(): 
     # train("./", 1000, 1e-4)

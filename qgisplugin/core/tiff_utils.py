@@ -64,7 +64,7 @@ def crop_tiff(input_tiff, output_tiff, width, height, start_x=0, start_y=0):
     del dataset
     del out_dataset
 
-def create_chunks(input_path, output_dir, chunk_size=501):
+def create_chunks(input_path, output_dir, chunk_size=400):
     # Open the raster dataset
     dataset = gdal.Open(input_path)
     if dataset is None:

@@ -20,6 +20,7 @@ import shutil
 # WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unet_lemon-oath-149_best.pt" # New one channel
 # WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unet_aux_effortless-dust-150_best.pt" # New hillshade
 WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/fallen-bush-189_best.pt" # New BASNet
+# WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/fresh-frog-201_best.pt" # New HRNet
 
 from qgis.core import (
     QgsRasterFileWriter,
@@ -131,7 +132,7 @@ class ShipSeeker:
 
         basnet_flag = True
         if basnet_flag:
-            rows, cols = create_chunks(cropped_path, self.temp_dir, 512) # 224
+            rows, cols = create_chunks(cropped_path, self.temp_dir, 512) # SET TO 400 IN THE FUTURE
         else:
             rows, cols = create_chunks(cropped_path, self.temp_dir)
 

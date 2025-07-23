@@ -50,7 +50,7 @@ class MBESDataset(Dataset):
         self.transform = transform
         self.byt = byt
         self.aug_multiplier = aug_multiplier  # Number of additional augmented samples per image
-        self.img_size = 512 if resize_to_div_16 else 501 # 224
+        self.img_size = 512 if resize_to_div_16 else 400 # SET TO 400 IN THE FUTURE
         
         self.using_hillshade = using_hillshade
         self.using_inpainted = using_inpainted

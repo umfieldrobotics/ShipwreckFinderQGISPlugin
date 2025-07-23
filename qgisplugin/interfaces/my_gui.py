@@ -272,11 +272,13 @@ class MyWidget(QDialog):
             self.progressBar.setValue(100)
 
             # write image to file
-            print("THe output path will be: ", output_path)
+            print("The output path will be: ", output_path)
 
             # Open result in QGIS
             if self.openCheckBox.isChecked():
-                output_raster_layer = QgsRasterLayer(output_path, 'New Image')
+                output_name = output_path.split('/')[-1][:-4]
+                # output_raster_layer = QgsRasterLayer(output_path, 'New Image')
+                output_raster_layer = QgsRasterLayer(output_path, output_name)
                 QgsProject.instance().addMapLayer(output_raster_layer, True)
 
         # except AttributeError:
