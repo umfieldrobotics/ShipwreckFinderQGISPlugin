@@ -50,7 +50,7 @@ class MBESDataset(Dataset):
         self.transform = transform
         self.byt = byt
         self.aug_multiplier = aug_multiplier  # Number of additional augmented samples per image
-        self.img_size = 512 if resize_to_div_16 else 400 # SET TO 400 IN THE FUTURE
+        self.img_size = 448 if resize_to_div_16 else 400 # SET TO 400 IN THE FUTURE
         
         self.using_hillshade = using_hillshade
         self.using_inpainted = using_inpainted
@@ -115,6 +115,8 @@ class MBESDataset(Dataset):
             # og_image[extreme_nodata_mask] = -2000
             inpaint_mask = ((og_image >= 1000) | (og_image <= -1000)).astype(np.uint8)
             og_image = cv2.inpaint(og_image.astype(np.float32), inpaint_mask, inpaintRadius=8, flags=cv2.INPAINT_NS)
+
+            # print(f"Num pixels in inpaint mask: {np.sum(inpaint_mask)}")
 
         # print(f"\t\t\tmin: {np.min(og_image)}, max: {np.max(og_image)}")
 

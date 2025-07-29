@@ -4,7 +4,7 @@ import os
 import glob
 import numpy as np
 from osgeo import gdal
-from qgisplugin.core.tiff_utils import crop_tiff, create_chunks, merge_chunks, get_tiff_size, merge_transparent_parts, copy_tiff_metadata, linear_interpolate_transparent, remove_invalid_pixels, ensure_valid_nodata
+from qgisplugin.core.tiff_utils import crop_tiff, create_chunks, merge_chunks, get_tiff_size, merge_transparent_parts, copy_tiff_metadata, linear_interpolate_transparent, remove_invalid_pixels, ensure_valid_nodata, robust_remove_invalid_pixels, get_raster_resolution, remove_small_contours
 from qgisplugin.core.train import test
 
 from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject, QgsPointXY, QgsRasterLayer, QgsRectangle
@@ -17,10 +17,14 @@ import shutil
 
 
 # WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/mbes_unet.pt" # Original
-# WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unet_lemon-oath-149_best.pt" # New one channel
+
+
 # WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unet_aux_effortless-dust-150_best.pt" # New hillshade
-WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/fallen-bush-189_best.pt" # New BASNet
-# WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/fresh-frog-201_best.pt" # New HRNet
+
+
+# WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/basnet_ruby-river-240_best.pt" # BEST BASNet
+# WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/hrnet_splendid-tree-238_best.pt" # BEST HRNet
+WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unet_valiant-spaceship-247_best.pt" # BEST UNet
 
 from qgis.core import (
     QgsRasterFileWriter,
@@ -105,6 +109,9 @@ class ShipSeeker:
         export_raster_as_geotiff(self.raster_layer, geotiff_path)
         set_progress(5)
 
+        res_x, res_y = get_raster_resolution(geotiff_path)
+        # print(f"X: {res_x}, Y: {res_y}")
+
         #Crop the image using the extent
         cropped_path = os.path.join(self.temp_dir, "cropped_geotiff.tif")
         self.crop_image_using_extent(geotiff_path, self.extent_str, cropped_path) # Todo, use this instead
@@ -130,11 +137,14 @@ class ShipSeeker:
         # Create cropped images in /temp_chunks/
         # rows, cols = create_chunks(interpolated_path, self.temp_dir)
 
-        basnet_flag = True
-        if basnet_flag:
-            rows, cols = create_chunks(cropped_path, self.temp_dir, 512) # SET TO 400 IN THE FUTURE
-        else:
-            rows, cols = create_chunks(cropped_path, self.temp_dir)
+        chunk_size = int(200 / abs(res_x))
+        # print(f"Chunk size: {chunk_size}")
+
+        # basnet_flag = False
+        # if basnet_flag:
+        #     rows, cols = create_chunks(cropped_path, self.temp_dir, chunk_size) # SET TO 400 IN THE FUTURE
+        # else:
+        rows, cols = create_chunks(cropped_path, self.temp_dir, chunk_size)
 
 
         ignore_images = [cropped_path, interpolated_path, geotiff_path]
@@ -145,6 +155,8 @@ class ShipSeeker:
                 continue
             with rasterio.open(file) as src:
                 array = src.read(1)
+
+            
 
             # print(f"Creating npy, dtype: {array.dtype}")
             array = array.astype(np.float64)
@@ -161,11 +173,11 @@ class ShipSeeker:
 
         # print(f"Temp dir: {self.temp_dir}")
 
-        print("About to run test function")
+        # print("About to run test function")
 
-        test(self.temp_dir, ignore_images, WEIGHTS_PATH, set_progress)
+        test(self.temp_dir, ignore_images, WEIGHTS_PATH, chunk_size, set_progress)
 
-        print("Finished running test function")
+        # print("Finished running test function")
 
         # # Copy metadata to model output
         # for i, input_file_path in enumerate(input_files):
@@ -186,6 +198,8 @@ class ShipSeeker:
 
         # Merge the chunks
         merge_chunks(self.temp_dir, rows, cols, output_path, save_model_output)
+
+
         set_progress(85)
         # print("Just merged chunks")
         # import time
@@ -196,16 +210,33 @@ class ShipSeeker:
         # print("SeekerHere1")
         # print(f"Tiff width, height: {get_tiff_size(output_path)}")
         # print(f"Cropping down to ({width}, {height})")
-
+        # crop_tiff(output_path, "home/smitd/Documents/Copied_Temp_Chunks/saved_model_out/cropped_out.tif", width, height)
+        
         crop_tiff(output_path, output_path, width, height)
+
+        # import cv2
+        # with rasterio.open(output_path) as src:
+        #     cv2.imwrite("/home/smitd/Documents/Copied_Temp_Chunks/saved_model_out/precontour.png", src.read(1)*255)
+
+        # # Remove small contours
+        # contour_threshold = 0.003 # 0.0006
+        # remove_small_contours(output_path, output_path, contour_threshold)
+
         set_progress(90)
         # print("SeekerHere2")
+        # import cv2
+        # with rasterio.open(output_path) as src:
+        #     cv2.imwrite("/home/smitd/Documents/Copied_Temp_Chunks/saved_model_out/postcrop.png", src.read(1)*255)
 
         merge_transparent_parts(cropped_path, output_path, output_path)
 
         # print("SeekerHere3")
         
-        remove_invalid_pixels(cropped_path, output_path, output_path)
+        invalid_pixels = robust_remove_invalid_pixels(cropped_path, output_path, output_path)
+
+        # Remove small contours
+        contour_threshold = 0.0035 # 0.0006
+        remove_small_contours(output_path, output_path, contour_threshold, invalid_pixels)
 
         copy_tiff_metadata(cropped_path, output_path)
         set_progress(95)

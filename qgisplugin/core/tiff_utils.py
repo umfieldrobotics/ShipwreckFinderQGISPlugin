@@ -5,7 +5,7 @@ from PIL import Image
 import cv2
 import rasterio
 
-from osgeo import gdal, gdalconst
+from osgeo import gdal, gdalconst, gdal_array
 from qgisplugin.core.data import normalize_nonzero
 
 
@@ -102,6 +102,15 @@ def create_chunks(input_path, output_dir, chunk_size=400):
             driver = gdal.GetDriverByName("GTiff")
             chunk_dataset = driver.Create(chunk_path, extended_width, extended_height, num_bands, dataset.GetRasterBand(1).DataType)
 
+            for band_num in range(1, num_bands + 1):
+                chunk_band = chunk_dataset.GetRasterBand(band_num)
+                chunk_band.SetNoDataValue(-9999)
+
+                # Fill entire chunk with NoData
+                nodata_array = np.full((extended_height, extended_width), -9999, dtype=gdal_array.GDALTypeCodeToNumericTypeCode(dataset.GetRasterBand(1).DataType))
+                chunk_band.WriteArray(nodata_array)
+
+
             # Copy geotransform and projection from original dataset
             chunk_dataset.SetGeoTransform((
                 dataset.GetGeoTransform()[0] + x_offset * dataset.GetGeoTransform()[1],
@@ -124,8 +133,9 @@ def create_chunks(input_path, output_dir, chunk_size=400):
                 # PAD the data
                 # new_data = np.zeros((501,501))
                 # new_data[:len(data), :len(data[0])] = data
-
+                
                 chunk_band.WriteArray(data)
+
 
             # Close chunk dataset
             chunk_dataset = None
@@ -143,18 +153,13 @@ def merge_chunks(output_dir, rows, cols, output_path, save_model_output):
     # for elt in chunk_tiff_files:
     #     print(elt)
 
-    gdal_merge_cmd = f"gdal_merge.py -o {output_path} " + " ".join(chunk_tiff_files)
-    # gdal_merge_cmd = gdal_merge_cmd + " > /home/smitd/Desktop/merge_log.txt 2>&1"
-    # with open("/home/smitd/Desktop/gdal_cmd.txt", 'w') as f:
-    #     f.write(gdal_merge_cmd)
+    if len(chunk_tiff_files) <= 500:
+        gdal_merge_cmd = f"gdal_merge.py -o {output_path} " + " ".join(chunk_tiff_files)
+        os.system(gdal_merge_cmd)
+    else:
+        robust_gdal_merge(chunk_tiff_files, output_path, 500)
 
-    # Things to try:
-    #   BIGTIFF in case it's too large for a tiff when saving (--co BIGTIFF=YES) and (--co TILED=YES)
-        # --co \"BIGTIFF=YES\" --co \"TILED=YES\"
-    #   Use gdalwarp in case it's memory limitations
-    #   Increase file descriptor limit (1024), using (ulimit -n 8192 <or higher>)
-
-    os.system(gdal_merge_cmd)
+    # gdal_merge_cmd = f"gdal_merge.py -o {output_path} " + " ".join(chunk_tiff_files)
 
     if save_model_output:
         # Merge the npy files
@@ -380,4 +385,109 @@ def ensure_valid_nodata(cropped_path, output_path):
         with rasterio.open(output_path, 'w', **profile) as dst:
             dst.write(cropped.astype(rasterio.float32))
             dst.nodata = -9999
+
+
+def robust_gdal_merge(tiff_files, output_path, batch_size=500):
+    import subprocess
+    import tempfile
+
+    # Base case
+    if len(tiff_files) <= batch_size:
+        cmd = ["gdal_merge.py", "-o", output_path] + tiff_files
+        subprocess.check_call(cmd)
+        return
+    
+    # Create temp files
+    temp_files = []
+    try:
+        for i in range(0, len(tiff_files), batch_size):
+            chunk = tiff_files[i:i + batch_size]
+            temp_file = tempfile.NamedTemporaryFile(suffix=".tif", delete=False).name
+            temp_files.append(temp_file)
+            cmd = ["gdal_merge.py", "-o", temp_file] + chunk
+            subprocess.check_call(cmd)
+
+        # Recurse on the intermediate files
+        robust_gdal_merge(temp_files, output_path, 500)
+    finally:
+        # Clean up intermediate files
+        for f in temp_files:
+            os.remove(f)
+
+def robust_remove_invalid_pixels(cropped_path, input_path, output_path):
+    invalid_pixels = 0
+
+    with rasterio.open(cropped_path) as crp, rasterio.open(input_path) as inp:
+        profile = inp.profile
+        profile.update(dtype=rasterio.uint8)
+
+        with rasterio.open(output_path, 'w', **profile) as dst:
+            # Iterate through the raster in blocks
+            for ji, window in inp.block_windows(1):
+                cropped_block = crp.read(1, window=window)
+                data_block = inp.read(window=window)
+
+                # Mask is 1 where invalid
+                invalid_mask = ((cropped_block >= 1000) | (cropped_block <= -1000))
+                invalid_pixels += np.count_nonzero(invalid_mask)
+
+                # Apply modifications
+                data_block = data_block.astype(np.uint8)
+                data_block[0][invalid_mask] = 0
+                data_block[1][invalid_mask] = 0
+                data_block[2][invalid_mask] = 127
+                data_block[3][:, :] = 255
+
+                dst.write(data_block, window=window)
+    
+    return invalid_pixels
+
+def get_raster_resolution(tif_path):
+    with rasterio.open(tif_path) as src:
+        res_x, res_y = src.res
+        return res_x, res_y
+    
+
+def remove_small_contours(input_path, output_path, threshold, invalid_pixels):
+    with rasterio.open(input_path) as src:
+        profile = src.profile
+        all_bands = src.read()
+        cleaned_data = np.copy(all_bands)
+
+        band1 = all_bands[0].astype(np.uint8)
+        band2 = all_bands[1].astype(np.uint8)
+        band3 = all_bands[2].astype(np.uint8)
+        band4 = all_bands[3]
+
+        height, width = band1.shape
+        min_area = int(((height * width) - invalid_pixels) * threshold)
+        # print(f"H: {height}, W: {width}")
+        # print(f"min area: {min_area}")
+
+        # Find contours in band1
+        contours, _ = cv2.findContours(band1, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Create mask where valid contours will be drawn
+        contour_mask = np.zeros_like(band1, dtype=np.uint8)
+
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            # print(f"Band 1 - Contour area: {area}")
+            if area >= min_area:
+                cv2.drawContours(contour_mask, [cnt], -1, 1, thickness=cv2.FILLED)
+
+        # Apply coloring based on the mask
+        cleaned_data[0] = np.where(contour_mask == 1, 127, 0) # Red in contour, 0 otherwise
+        cleaned_data[1] = np.where(contour_mask == 1, 0, 0) # Green is always 0
+        cleaned_data[2] = np.where(contour_mask == 1, 0, 127) # Blue in background, 0 in contour
+        cleaned_data[3] = band4
+
+        profile.update({
+            "count": src.count,
+            "dtype": cleaned_data.dtype
+        })
+
+        with rasterio.open(output_path, 'w', **profile) as dst:
+            dst.write(cleaned_data)
+
 
