@@ -45,17 +45,20 @@ def normalize_nonzero(image):
     return image
 
 class MBESDataset(Dataset):
-    def __init__(self, root_dir, ignore_files, transform=None, byt=False, aug_multiplier=0, using_hillshade=False, using_inpainted=False, resize_to_div_16=False):
+    def __init__(self, root_dir, ignore_files, transform=None, byt=False, aug_multiplier=0, using_hillshade=False, using_inpainted=False, resize_to_div_16=False, cell_size=1.0):
         self.root_dir = root_dir
         self.transform = transform
         self.byt = byt
         self.aug_multiplier = aug_multiplier  # Number of additional augmented samples per image
-        self.img_size = 448 if resize_to_div_16 else 400 # SET TO 400 IN THE FUTURE
+        self.img_size = 400 # SET TO 400 IN THE FUTURE
         
         self.using_hillshade = using_hillshade
         self.using_inpainted = using_inpainted
+        self.cell_size = cell_size
 
-        self.resize = transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.NEAREST)  # Resize to 501 x 501
+        self.resize_dim = ((self.img_size // 32) + 1) * 32  if resize_to_div_16 else self.img_size
+        self.resize = transforms.Resize((self.resize_dim, self.resize_dim), interpolation=transforms.InterpolationMode.NEAREST)
+        # self.resize = transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.NEAREST)  # Resize to 501 x 501
 
         # if self.using_inpainted:
         #     self.file_list = [file_name for file_name in os.listdir(os.path.join(root_dir, "inpainted")) if "_image.npy" in file_name]
@@ -106,6 +109,11 @@ class MBESDataset(Dataset):
         # with rasterio.open(image_name) as src:
         #     og_image = src.read(1)
 
+        # if self.using_hillshade:
+        #     hillshade = self.compute_hillshade(og_image, cell_size=self.cell_size)
+        #     hillshade = torch.from_numpy(hillshade).float().unsqueeze(0) # (1, H, W)
+        #     hillshade = self.resize(hillshade) / 255.0
+
         # print(f"\t\t\tmin: {np.min(og_image)}, max: {np.max(og_image)}")
 
         if self.using_inpainted: # Compute inpainted image
@@ -121,6 +129,12 @@ class MBESDataset(Dataset):
         # print(f"\t\t\tmin: {np.min(og_image)}, max: {np.max(og_image)}")
 
         # np.save(os.path.join("/home/smitd/Documents/Inpainted_chunks", file_name), og_image)
+        
+        # Create hillshade from og image before it becomes a tensor
+        if self.using_hillshade:
+            hillshade = self.compute_hillshade(og_image, cell_size=self.cell_size)
+            hillshade = torch.from_numpy(hillshade).float().unsqueeze(0) # (1, H, W)
+            hillshade = self.resize(hillshade) / 255.0
 
         image = torch.from_numpy(og_image).float()
 
@@ -147,21 +161,17 @@ class MBESDataset(Dataset):
         #     label_np = np.load(label_name).astype(np.int32) > 0
         # else:
         #     label_np = np.zeros((self.img_size, self.img_size), dtype=np.int32)
-        label_np = np.zeros((self.img_size, self.img_size), dtype=np.int32)
+        label_np = np.zeros((self.resize_dim, self.resize_dim), dtype=np.int32)
 
         # Resize using nearest neighbor to preserve {-1, 0, 1}
         label = torch.from_numpy(label_np).unsqueeze(0).unsqueeze(0)  # (1, H, W)
-        label = torch.nn.functional.interpolate(label.float(), size=(self.img_size, self.img_size), mode='nearest').squeeze(0).squeeze(0).long()  # (H, W)
+        label = torch.nn.functional.interpolate(label.float(), size=(self.resize_dim, self.resize_dim), mode='nearest').squeeze(0).squeeze(0).long()  # (H, W)
 
         # Temporarily turn -1 → 255 for Albumentations
         label[label == -1] = 255
 
         # --- Optional hillshade ---
         if self.using_hillshade:
-            hillshade_file_name, _ = self.expanded_file_list[idx]
-            hillshade_path = os.path.join(self.root_dir, "hillshade", hillshade_file_name)
-            hillshade = torch.from_numpy(np.load(hillshade_path)).float().unsqueeze(0)  # (1, H, W)
-            hillshade = self.resize(hillshade) / 255.0
             image = torch.cat([image, hillshade], dim=0)  # (2, H, W)
 
         # --- Albumentations ---

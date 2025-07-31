@@ -79,6 +79,8 @@ def create_chunks(input_path, output_dir, chunk_size=400):
     x_chunks = (x_size + chunk_size - 1) // chunk_size
     y_chunks = (y_size + chunk_size - 1) // chunk_size
 
+    # print(x_size, y_size, chunk_size, x_chunks, y_chunks)
+
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
 
@@ -460,9 +462,10 @@ def remove_small_contours(input_path, output_path, threshold, invalid_pixels):
         band4 = all_bands[3]
 
         height, width = band1.shape
-        min_area = int(((height * width) - invalid_pixels) * threshold)
-        # print(f"H: {height}, W: {width}")
+        # min_area = int(((height * width) - invalid_pixels) * threshold)
+        min_area = int(((height * width)) * threshold)
         # print(f"min area: {min_area}")
+        # print(f"H: {height}, W: {width}")
 
         # Find contours in band1
         contours, _ = cv2.findContours(band1, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)

@@ -142,7 +142,7 @@ def crop_center(image, crop_height=512, crop_width=512):
 
 
 # BASNET TEST FUNCTION
-# def test(test_path, ignore_files, weight_path, chunk_size, set_progress: callable=None):
+# def test(test_path, ignore_files, weight_path, chunk_size, cell_size, set_progress: callable=None):
 #     threshold = 0.1
 
 #     # Load the model
@@ -187,7 +187,7 @@ def crop_center(image, crop_height=512, crop_width=512):
 #             pred = np.expand_dims(pred, axis=1)
 #             pred = np.squeeze(pred)
 
-#             # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_model_out", "preclean" + save_name), pred*255)
+#             # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_model_out", "postthresh" + save_name), pred*255)
 
 #             # # Remove small contours
 #             # min_area = int((chunk_size**2) * 0.0006)  # adjust this value as needed
@@ -215,15 +215,17 @@ def crop_center(image, crop_height=512, crop_width=512):
 
 
 # UNET TEST FUNCTION
-def test(test_file_dir, ignore_files, weight_path, chunk_size, set_progress: callable = None):
+def test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, set_progress: callable = None):
     #load the model 
     # FOR ONE CHANNEL INPUT
-    model = Unet(1, 2)
+    # model = Unet(1, 2)
     # FOR TWO CHANNEL INPUT
-    # model = Unet(2, 2)
+    model = Unet(2, 2)
 
     model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
     model.cuda()
+    # model.cpu()
+
     model.eval()
 
     # print(f"Model device: {model.resnet_encoder.conv1.device}")
@@ -231,7 +233,12 @@ def test(test_file_dir, ignore_files, weight_path, chunk_size, set_progress: cal
     # output_tiff_file_names = []
     # output_numpy_file_names = []
 
-    dataset = MBESDataset(test_file_dir, ignore_files, using_hillshade=False, using_inpainted=True)
+    # FOR ONE CHANNEL
+    # dataset = MBESDataset(test_file_dir, ignore_files, using_hillshade=False, using_inpainted=True)
+
+    # FOR TWO CHANNEL
+    dataset = MBESDataset(test_file_dir, ignore_files, using_hillshade=True, using_inpainted=True, cell_size=cell_size)
+
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
 
     with torch.no_grad():
@@ -240,17 +247,24 @@ def test(test_file_dir, ignore_files, weight_path, chunk_size, set_progress: cal
             image = data['image'].cuda()
             image_file_path = data['metadata']['label_name'][0] # "Label" is the corresponding .tif file for metadata
 
-            # save_name = os.path.splitext(os.path.basename(image_file_path))[0] + ".png"
-            # print(image.cpu().numpy())
+            save_name = os.path.splitext(os.path.basename(image_file_path))[0] + ".png"
+            # # print(image.cpu().numpy())
             # print("Saving chunk")
-            # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_getitem", save_name), image.cpu().numpy().squeeze()*255)
+            # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_getitem", "layer0_" + save_name), image.cpu().numpy().squeeze()[0]*255)
+            # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_getitem", "layer1_" + save_name), image.cpu().numpy().squeeze()[1]*255)
 
             output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
 
             # print(f"Min: {image.min()}, Max: {image.max()}, Size: {image.shape}")
-
+            # print(f"Device: {next(model.parameters()).device}")
             # Run through model
             pred = model(image)
+
+            # pred2 = pred.argmax(dim=1)
+            # pred2= pred2.cpu().detach().numpy()
+            # pred2 = np.expand_dims(pred2, axis=0)
+            # pred2 = np.squeeze(pred2)
+            # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_model_out", "freshout" + save_name), pred2*255)
 
             # Undo the resize
             resize = transforms.Resize((chunk_size, chunk_size), interpolation=transforms.InterpolationMode.NEAREST)
@@ -267,6 +281,7 @@ def test(test_file_dir, ignore_files, weight_path, chunk_size, set_progress: cal
             pred = np.squeeze(pred)
 
             # print(f"Prediction shape: {pred.shape}")
+            # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_model_out", "post" + save_name), pred*255)
 
             # Save tiff and copy metadata
             plt.imsave(output_file_name, pred, cmap="jet")
@@ -275,7 +290,7 @@ def test(test_file_dir, ignore_files, weight_path, chunk_size, set_progress: cal
             set_progress(20 + int((i * 60) // len(dataloader.dataset)))
 
 # HRNET TEST FUNCTION
-# def test(test_file_dir, ignore_files, weight_path, chunk_size, set_progress: callable = None):
+# def test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, set_progress: callable = None):
 #     a = argparse.Namespace(cfg='hrnet/config/hrnet_config.py',
 #                                    local_rank=-1,
 #                                    opts=[],
@@ -284,7 +299,7 @@ def test(test_file_dir, ignore_files, weight_path, chunk_size, set_progress: cal
 
 #     model = get_seg_model(config)
 
-#     print("conv1 shape:", model.conv1.weight.shape)
+#     # print("conv1 shape:", model.conv1.weight.shape)
 
 #     model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
 #     model.cuda()
@@ -324,18 +339,18 @@ def test(test_file_dir, ignore_files, weight_path, chunk_size, set_progress: cal
 #             # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_model_out", "preclean_" + save_name), pred*255)
             
 #             # Remove small contours
-#             min_area = 150  # adjust this value as needed
+#             # min_area = 150  # adjust this value as needed
 
-#             pred = pred.astype(np.uint8)
-#             contours, _ = cv2.findContours(pred, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-#             cleaned = np.zeros_like(pred)
-#             for cnt in contours:
-#                 area = cv2.contourArea(cnt)
-#                 if area >= min_area:
-#                     cv2.drawContours(cleaned, [cnt], -1, 1, thickness=cv2.FILLED)
-#                 # else:
-#                 #     print(f"Removing contour with area {area}")
-#             pred = cleaned.astype(np.int32)
+#             # pred = pred.astype(np.uint8)
+#             # contours, _ = cv2.findContours(pred, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+#             # cleaned = np.zeros_like(pred)
+#             # for cnt in contours:
+#             #     area = cv2.contourArea(cnt)
+#             #     if area >= min_area:
+#             #         cv2.drawContours(cleaned, [cnt], -1, 1, thickness=cv2.FILLED)
+#             #     # else:
+#             #     #     print(f"Removing contour with area {area}")
+#             # pred = cleaned.astype(np.int32)
 
 #             # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_model_out", "postclean_" + save_name), pred*255)
 

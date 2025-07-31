@@ -19,12 +19,13 @@ import shutil
 # WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/mbes_unet.pt" # Original
 
 
-# WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unet_aux_effortless-dust-150_best.pt" # New hillshade
+
 
 
 # WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/basnet_ruby-river-240_best.pt" # BEST BASNet
 # WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/hrnet_splendid-tree-238_best.pt" # BEST HRNet
-WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unet_valiant-spaceship-247_best.pt" # BEST UNet
+# WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unet_valiant-spaceship-247_best.pt" # BEST UNet
+WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unetaux_rosy-elevator-246_best.pt" # BEST UNet Aux
 
 from qgis.core import (
     QgsRasterFileWriter,
@@ -150,18 +151,36 @@ class ShipSeeker:
         ignore_images = [cropped_path, interpolated_path, geotiff_path]
         input_files = glob.glob(os.path.join(self.temp_dir, "*"))
 
+
+        # thresh = chunk_size * 5 # threshold requires at least 5 lines worth of pixels
         for file in input_files:
             if file in ignore_images:
                 continue
             with rasterio.open(file) as src:
                 array = src.read(1)
-
-            
-
-            # print(f"Creating npy, dtype: {array.dtype}")
+                # nodata = src.nodata
+            #     if nodata is not None:
+            #         valid_mask = (array != nodata) & (array != 0)
+            #     else:
+            #         valid_mask = (array != 0)
+            # num_valid = np.count_nonzero(valid_mask)
+            # # Only let valid chunks through
+            # if num_valid > thresh:
+            #     array = array.astype(np.float64)
+            #     output_file_path = os.path.splitext(file)[0] + ".npy"
+            #     np.save(output_file_path, array)
+            # else:
+            #     print(f"Not including a chunk")
+            #     array = np.zeros_like(array)
+            #     output_file_path = os.path.splitext(file)[0] + ".npy"
+            #     np.save(output_file_path, array)
             array = array.astype(np.float64)
             output_file_path = os.path.splitext(file)[0] + ".npy"
             np.save(output_file_path, array)
+
+            # print(f"Creating npy, dtype: {array.dtype}")
+
+            
 
         set_progress(20)
 
@@ -175,7 +194,7 @@ class ShipSeeker:
 
         # print("About to run test function")
 
-        test(self.temp_dir, ignore_images, WEIGHTS_PATH, chunk_size, set_progress)
+        test(self.temp_dir, ignore_images, WEIGHTS_PATH, chunk_size, res_x, set_progress)
 
         # print("Finished running test function")
 
@@ -235,7 +254,7 @@ class ShipSeeker:
         invalid_pixels = robust_remove_invalid_pixels(cropped_path, output_path, output_path)
 
         # Remove small contours
-        contour_threshold = 0.0035 # 0.0006
+        contour_threshold = 0.0006 # ------------- THIS IS THE ADJUSTABLE THRESHOLD THAT WILL BECOME A PARAMETER
         remove_small_contours(output_path, output_path, contour_threshold, invalid_pixels)
 
         copy_tiff_metadata(cropped_path, output_path)
