@@ -159,7 +159,7 @@ def merge_chunks(output_dir, rows, cols, output_path, save_model_output):
         gdal_merge_cmd = f"gdal_merge.py -o {output_path} " + " ".join(chunk_tiff_files)
         os.system(gdal_merge_cmd)
     else:
-        robust_gdal_merge(chunk_tiff_files, output_path, 500)
+        robust_gdal_merge(chunk_tiff_files, output_path)
 
     # gdal_merge_cmd = f"gdal_merge.py -o {output_path} " + " ".join(chunk_tiff_files)
 
@@ -215,50 +215,91 @@ def merge_transparent_parts(image1_path, image2_path, output_path):
     """
     Merge the transparent parts of image1 into image2.
     """
+    from rasterio.windows import Window
 
     with rasterio.open(image1_path) as src1, rasterio.open(image2_path) as src2:
-        # Check size compatibility
         if src1.width != src2.width or src1.height != src2.height:
             raise ValueError("Both images must be the same size")
 
-        # print(f"Image1 bands: {src1.count}, Image2 bands: {src2.count}")
-
-        # Read both images
-        image1 = src1.read()
-        image2 = src2.read()
-
-        # image1[0] = normalize_nonzero(image1[0])
-
-        # print("Merge2")
-
-        if src1.count == 2:
-            # Use alpha channel
-            alpha1 = image1[1]
-            transparent_mask = (alpha1 == 0)
-        elif src1.count == 1:
-            # Assume fully opaque: no transparency
-            transparent_mask = np.zeros_like(image1[0], dtype=bool)
-        else:
-            raise ValueError("Image1 must have 1 or 2 bands")
-
-        # print("Merge3")
-        # Replace pixels in image2 where image1 is transparent
-        for b in range(4):  # For each band in image2 (RGBA)
-            if b < 3:
-                image2[b][transparent_mask] = image1[0][transparent_mask]
-            else:
-                image2[b][transparent_mask] = 0  # Set alpha to 0
-
-        # print("Merge4")
-        # Write the result to a new file
         profile = src2.profile
         profile.update({
             "count": 4,
-            "dtype": image2.dtype
+            "dtype": src2.dtypes[0]
         })
 
+        block_size = 512  # Tune this depending on RAM, 512 or 1024 is typically safe
+
         with rasterio.open(output_path, 'w', **profile) as dst:
-            dst.write(image2)
+            for y in range(0, src1.height, block_size):
+                for x in range(0, src1.width, block_size):
+                    window_width = min(block_size, src1.width - x)
+                    window_height = min(block_size, src1.height - y)
+                    window = Window(x, y, window_width, window_height)
+
+                    image1 = src1.read(window=window)
+                    image2 = src2.read(window=window)
+
+                    if src1.count == 2:
+                        alpha1 = image1[1]
+                        transparent_mask = (alpha1 == 0)
+                    elif src1.count == 1:
+                        transparent_mask = np.zeros((window_height, window_width), dtype=bool)
+                    else:
+                        raise ValueError("Image1 must have 1 or 2 bands")
+
+                    # Merge
+                    for b in range(4):
+                        if b < 3:
+                            image2[b][transparent_mask] = image1[0][transparent_mask]
+                        else:
+                            image2[b][transparent_mask] = 0
+
+                    dst.write(image2, window=window)
+
+
+    # with rasterio.open(image1_path) as src1, rasterio.open(image2_path) as src2:
+    #     # Check size compatibility
+    #     if src1.width != src2.width or src1.height != src2.height:
+    #         raise ValueError("Both images must be the same size")
+
+    #     # print(f"Image1 bands: {src1.count}, Image2 bands: {src2.count}")
+
+    #     # Read both images
+    #     image1 = src1.read()
+    #     image2 = src2.read()
+
+    #     # image1[0] = normalize_nonzero(image1[0])
+
+    #     # print("Merge2")
+
+    #     if src1.count == 2:
+    #         # Use alpha channel
+    #         alpha1 = image1[1]
+    #         transparent_mask = (alpha1 == 0)
+    #     elif src1.count == 1:
+    #         # Assume fully opaque: no transparency
+    #         transparent_mask = np.zeros_like(image1[0], dtype=bool)
+    #     else:
+    #         raise ValueError("Image1 must have 1 or 2 bands")
+
+    #     # print("Merge3")
+    #     # Replace pixels in image2 where image1 is transparent
+    #     for b in range(4):  # For each band in image2 (RGBA)
+    #         if b < 3:
+    #             image2[b][transparent_mask] = image1[0][transparent_mask]
+    #         else:
+    #             image2[b][transparent_mask] = 0  # Set alpha to 0
+
+    #     # print("Merge4")
+    #     # Write the result to a new file
+    #     profile = src2.profile
+    #     profile.update({
+    #         "count": 4,
+    #         "dtype": image2.dtype
+    #     })
+
+    #     with rasterio.open(output_path, 'w', **profile) as dst:
+    #         dst.write(image2)
 
 
 
@@ -389,32 +430,70 @@ def ensure_valid_nodata(cropped_path, output_path):
             dst.nodata = -9999
 
 
-def robust_gdal_merge(tiff_files, output_path, batch_size=500):
-    import subprocess
-    import tempfile
+# def robust_gdal_merge(tiff_files, output_path, batch_size=50):
+#     import subprocess
+#     import tempfile
+#     import gc
 
-    # Base case
-    if len(tiff_files) <= batch_size:
-        cmd = ["gdal_merge.py", "-o", output_path] + tiff_files
-        subprocess.check_call(cmd)
-        return
+#     # Base case
+#     if len(tiff_files) <= batch_size:
+#         # cmd = ["gdal_merge.py", "-o", output_path] + tiff_files
+#         cmd = ["gdal_merge.py", "-o", output_path, "-co", "TILED=YES", 
+#                "-co", "BLOCKXSIZE=512", "-co", "BLOCKYSIZE=512"] + tiff_files
+#         subprocess.check_call(cmd)
+#         return
     
-    # Create temp files
-    temp_files = []
-    try:
-        for i in range(0, len(tiff_files), batch_size):
-            chunk = tiff_files[i:i + batch_size]
-            temp_file = tempfile.NamedTemporaryFile(suffix=".tif", delete=False).name
-            temp_files.append(temp_file)
-            cmd = ["gdal_merge.py", "-o", temp_file] + chunk
-            subprocess.check_call(cmd)
+#     # Create temp files
+#     temp_files = []
+#     try:
+#         for i in range(0, len(tiff_files), batch_size):
+#             chunk = tiff_files[i:i + batch_size]
+#             temp_file = tempfile.NamedTemporaryFile(suffix=".tif", delete=False).name
+#             temp_files.append(temp_file)
+#             # cmd = ["gdal_merge.py", "-o", temp_file] + chunk
+#             cmd = ["gdal_merge.py", "-o", temp_file, "-co", "TILED=YES", 
+#                    "-co", "BLOCKXSIZE=512", "-co", "BLOCKYSIZE=512"] + chunk
+#             subprocess.check_call(cmd)
 
-        # Recurse on the intermediate files
-        robust_gdal_merge(temp_files, output_path, 500)
+#             gc.collect()
+
+#         # Recurse on the intermediate files
+#         robust_gdal_merge(temp_files, output_path, 50)
+#     finally:
+#         # Clean up intermediate files
+#         for f in temp_files:
+#             if os.path.exists(f):
+#                 os.remove(f)
+#         gc.collect()
+
+def robust_gdal_merge(tiff_files, output_path):
+    import tempfile
+    import subprocess
+
+    # Create a temporary VRT file
+    with tempfile.NamedTemporaryFile(suffix=".vrt", delete=False) as vrt_file:
+        vrt_path = vrt_file.name
+
+    try:
+        # Build the VRT (virtual raster stack)
+        subprocess.check_call(["gdalbuildvrt", vrt_path] + tiff_files)
+
+        # Translate to a real, physical GeoTIFF file
+        subprocess.check_call([
+            "gdal_translate",
+            "-co", "TILED=YES",
+            "-co", "BLOCKXSIZE=512",
+            "-co", "BLOCKYSIZE=512",
+            vrt_path,
+            output_path
+        ])
     finally:
-        # Clean up intermediate files
-        for f in temp_files:
-            os.remove(f)
+        if os.path.exists(vrt_path):
+            os.remove(vrt_path)
+
+
+
+
 
 def robust_remove_invalid_pixels(cropped_path, input_path, output_path):
     invalid_pixels = 0
@@ -494,3 +573,142 @@ def remove_small_contours(input_path, output_path, threshold, invalid_pixels):
             dst.write(cleaned_data)
 
 
+def remove_small_contours_chunked(input_path, output_path, threshold, invalid_pixels, chunk_size=2048):
+    from rasterio.windows import Window
+    import gc
+    
+    with rasterio.open(input_path) as src:
+        profile = src.profile
+        height, width = src.height, src.width
+        
+        # Calculate minimum area based on full raster dimensions
+        min_area = int(((height * width) - invalid_pixels) * threshold)
+        
+        # Update profile for output
+        profile.update({
+            "count": src.count,
+            "dtype": np.uint8  # Assuming output will be uint8
+        })
+        
+        # Create output file
+        with rasterio.open(output_path, 'w', **profile) as dst:
+            # Process in chunks
+            for row_start in range(0, height, chunk_size):
+                for col_start in range(0, width, chunk_size):
+                    # Calculate actual chunk dimensions (handle edge cases)
+                    row_end = min(row_start + chunk_size, height)
+                    col_end = min(col_start + chunk_size, width)
+                    chunk_height = row_end - row_start
+                    chunk_width = col_end - col_start
+                    # Define window for this chunk
+                    window = Window(col_start, row_start, chunk_width, chunk_height)
+                    
+                    # Read only this chunk
+                    chunk_data = src.read(window=window)
+                    
+                    # Process this chunk
+                    processed_chunk = process_chunk(chunk_data, min_area)
+                    
+                    # Write processed chunk to output
+                    dst.write(processed_chunk, window=window)
+                    
+                    # Force garbage collection after each chunk
+                    del chunk_data, processed_chunk
+                    gc.collect()
+
+def process_chunk(chunk_data, min_area):
+    cleaned_data = np.copy(chunk_data)
+    
+    band1 = chunk_data[0].astype(np.uint8)
+    band2 = chunk_data[1].astype(np.uint8) 
+    band3 = chunk_data[2].astype(np.uint8)
+    band4 = chunk_data[3]
+    
+    # Find contours in band1
+    contours, _ = cv2.findContours(band1, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Create mask where valid contours will be drawn
+    contour_mask = np.zeros_like(band1, dtype=np.uint8)
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        if area >= min_area:
+            cv2.drawContours(contour_mask, [cnt], -1, 1, thickness=cv2.FILLED)
+    # Apply coloring based on the mask
+    cleaned_data[0] = np.where(contour_mask == 1, 127, 0)  # Red in contour, 0 otherwise
+    cleaned_data[1] = np.where(contour_mask == 1, 0, 0)    # Green is always 0
+    cleaned_data[2] = np.where(contour_mask == 1, 0, 127)  # Blue in background, 0 in contour
+    cleaned_data[3] = band4
+    
+    return cleaned_data
+
+
+
+
+
+
+
+
+
+# def parallel_spatial_merge_safe(tiff_files, output_path, grid_size=4, batch_size=50):
+#     """
+#     Safe spatial merge that preserves chunks exactly as they are.
+#     Removes all compression and uses minimal safe flags only.
+#     """
+#     import subprocess
+#     import tempfile
+#     import os
+#     from math import ceil
+#     import gc
+    
+#     if len(tiff_files) <= batch_size:
+#         # Only use absolutely safe flags that don't alter data
+#         cmd = ["gdal_merge.py", "-o", output_path, "-co", "TILED=YES", 
+#                "-co", "BLOCKXSIZE=512", "-co", "BLOCKYSIZE=512"] + tiff_files
+#         subprocess.check_call(cmd)
+#         return
+    
+#     # Calculate optimal grid dimensions
+#     total_files = len(tiff_files)
+#     files_per_cell = ceil(total_files / (grid_size * grid_size))
+    
+#     temp_files = []
+#     try:
+#         # Process files in spatial groups
+#         for i in range(0, total_files, files_per_cell):
+#             chunk = tiff_files[i:i + files_per_cell]
+#             temp_file = tempfile.NamedTemporaryFile(suffix=".tif", delete=False).name
+#             temp_files.append(temp_file)
+            
+#             # Use VRT for initial grouping (VRT is pure metadata - no data changes)
+#             vrt_temp = tempfile.NamedTemporaryFile(suffix=".vrt", delete=False).name
+#             try:
+#                 # VRT creation - only metadata, no data processing
+#                 cmd = ["gdalbuildvrt", vrt_temp] + chunk
+#                 subprocess.check_call(cmd)
+                
+#                 # Translate VRT to TIFF with only safe tiling options
+#                 cmd = ["gdal_translate", "-co", "TILED=YES", "-co", "BLOCKXSIZE=512", 
+#                        "-co", "BLOCKYSIZE=512", vrt_temp, temp_file]
+#                 subprocess.check_call(cmd)
+#             finally:
+#                 if os.path.exists(vrt_temp):
+#                     os.remove(vrt_temp)
+            
+#             # Force garbage collection after each spatial group
+#             gc.collect()
+        
+#         # Final merge of spatial groups
+#         if len(temp_files) > 1:
+#             parallel_spatial_merge_safe(temp_files, output_path, grid_size, batch_size)
+#         else:
+#             # Move the single file instead of renaming to avoid potential issues
+#             import shutil
+#             shutil.move(temp_files[0], output_path)
+#             temp_files = []  # Prevent cleanup
+            
+#     finally:
+#         # Clean up any remaining temp files
+#         for f in temp_files:
+#             if os.path.exists(f):
+#                 os.remove(f)
+#         # Final garbage collection
+#         gc.collect()

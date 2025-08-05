@@ -4,7 +4,7 @@ import os
 import glob
 import numpy as np
 from osgeo import gdal
-from qgisplugin.core.tiff_utils import crop_tiff, create_chunks, merge_chunks, get_tiff_size, merge_transparent_parts, copy_tiff_metadata, linear_interpolate_transparent, remove_invalid_pixels, ensure_valid_nodata, robust_remove_invalid_pixels, get_raster_resolution, remove_small_contours
+from qgisplugin.core.tiff_utils import crop_tiff, create_chunks, merge_chunks, get_tiff_size, merge_transparent_parts, copy_tiff_metadata, linear_interpolate_transparent, remove_invalid_pixels, ensure_valid_nodata, robust_remove_invalid_pixels, get_raster_resolution, remove_small_contours, remove_small_contours_chunked
 from qgisplugin.core.train import test
 
 from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject, QgsPointXY, QgsRasterLayer, QgsRectangle
@@ -254,8 +254,9 @@ class ShipSeeker:
         invalid_pixels = robust_remove_invalid_pixels(cropped_path, output_path, output_path)
 
         # Remove small contours
-        contour_threshold = 0.0006 # ------------- THIS IS THE ADJUSTABLE THRESHOLD THAT WILL BECOME A PARAMETER
-        remove_small_contours(output_path, output_path, contour_threshold, invalid_pixels)
+        contour_threshold = 0 # 0.0006 # ------------- THIS IS THE ADJUSTABLE THRESHOLD THAT WILL BECOME A PARAMETER
+        # remove_small_contours(output_path, output_path, contour_threshold, invalid_pixels)
+        remove_small_contours_chunked(output_path, output_path, contour_threshold, invalid_pixels)
 
         copy_tiff_metadata(cropped_path, output_path)
         set_progress(95)
