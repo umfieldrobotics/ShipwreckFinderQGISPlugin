@@ -142,86 +142,89 @@ def crop_center(image, crop_height=512, crop_width=512):
 
 
 # BASNET TEST FUNCTION
-# def test(test_path, ignore_files, weight_path, chunk_size, cell_size, set_progress: callable=None):
-#     threshold = 0.1
+def basnet_test(test_path, ignore_files, weight_path, chunk_size, cell_size, set_progress: callable=None):
+    threshold = 0.1
 
-#     # Load the model
-#     model = BASNet(3, 1)
-#     model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
-#     model.cuda()
+    # Load the model
+    model = BASNet(3, 1)
+    model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
+    model.cuda()
 
-#     model.eval()
+    model.eval()
 
-#     test_dataset = MBESDataset(test_path, ignore_files, using_hillshade=False, using_inpainted=True, resize_to_div_16=True)
-#     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0)
+    test_dataset = MBESDataset(test_path, ignore_files, using_hillshade=False, using_inpainted=True, resize_to_div_16=True)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0)
 
-#     # print("Post dataloader")
+    # print("Post dataloader")
 
-#     with torch.no_grad():
-#         for i, data in enumerate(test_loader):
-#             image1 = data['image'].type(torch.FloatTensor)
-#             image = torch.hstack([image1, image1, image1])
-#             image_file_path = data['metadata']['label_name'][0] # "Label" is the corresponding .tif file for metadata
-#             output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
+    with torch.no_grad():
+        for i, data in enumerate(test_loader):
+            image1 = data['image'].type(torch.FloatTensor)
+            image = torch.hstack([image1, image1, image1])
+            image_file_path = data['metadata']['label_name'][0] # "Label" is the corresponding .tif file for metadata
+            output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
 
-#             # save_name = os.path.splitext(os.path.basename(image_file_path))[0] + ".png"
-#             # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_getitem", save_name), image1.cpu().numpy().squeeze()*255)
+            # save_name = os.path.splitext(os.path.basename(image_file_path))[0] + ".png"
+            # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_getitem", save_name), image1.cpu().numpy().squeeze()*255)
             
-#             image_v = Variable(image, requires_grad=True).cuda()
+            image_v = Variable(image, requires_grad=True).cuda()
 
-#             _, d1, _, _, _, _, _, _ = model(image_v)
+            _, d1, _, _, _, _, _, _ = model(image_v)
 
-#             pred = d1[:,0,:,:]
-#             pred = normPRED(pred)
+            pred = d1[:,0,:,:]
+            pred = normPRED(pred)
             
-#             # Undo the resize
-#             resize = transforms.Resize((chunk_size, chunk_size), interpolation=transforms.InterpolationMode.NEAREST)
-#             pred = resize(pred)
+            # Undo the resize
+            resize = transforms.Resize((chunk_size, chunk_size), interpolation=transforms.InterpolationMode.NEAREST)
+            pred = resize(pred)
 
-#             pred = pred.cpu().detach().numpy()
+            pred = pred.cpu().detach().numpy()
             
-#             # pred_numpy_filename = os.path.splitext(output_file_name)[0] + ".npy"
-#             # np.save(pred_numpy_filename, pred)
+            # pred_numpy_filename = os.path.splitext(output_file_name)[0] + ".npy"
+            # np.save(pred_numpy_filename, pred)
 
-#             pred = (pred >= threshold).astype(np.int32)
-#             pred = np.expand_dims(pred, axis=1)
-#             pred = np.squeeze(pred)
+            pred = (pred >= threshold).astype(np.int32)
+            pred = np.expand_dims(pred, axis=1)
+            pred = np.squeeze(pred)
 
-#             # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_model_out", "postthresh" + save_name), pred*255)
+            # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_model_out", "postthresh" + save_name), pred*255)
 
-#             # # Remove small contours
-#             # min_area = int((chunk_size**2) * 0.0006)  # adjust this value as needed
-#             # pred = pred.astype(np.uint8)
-#             # contours, _ = cv2.findContours(pred, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # # Remove small contours
+            # min_area = int((chunk_size**2) * 0.0006)  # adjust this value as needed
+            # pred = pred.astype(np.uint8)
+            # contours, _ = cv2.findContours(pred, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
-#             # cleaned = np.zeros_like(pred)
-#             # for cnt in contours:
-#             #     area = cv2.contourArea(cnt)
-#             #     print(f"Contour area: {area}")
-#             #     if area >= min_area:
-#             #         cv2.drawContours(cleaned, [cnt], -1, 1, thickness=cv2.FILLED)
-#             #     # else:
-#             #     #     print(f"Removing contour with area {area}")
-#             # pred = cleaned.astype(np.int32)
+            # cleaned = np.zeros_like(pred)
+            # for cnt in contours:
+            #     area = cv2.contourArea(cnt)
+            #     print(f"Contour area: {area}")
+            #     if area >= min_area:
+            #         cv2.drawContours(cleaned, [cnt], -1, 1, thickness=cv2.FILLED)
+            #     # else:
+            #     #     print(f"Removing contour with area {area}")
+            # pred = cleaned.astype(np.int32)
 
             
-#             # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_model_out", "postclean" + save_name), pred*255)
+            # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_model_out", "postclean" + save_name), pred*255)
             
-#             plt.imsave(output_file_name, pred, cmap="jet")
-#             copy_tiff_metadata(image_file_path, output_file_name)
+            plt.imsave(output_file_name, pred, cmap="jet")
+            copy_tiff_metadata(image_file_path, output_file_name)
 
-#             set_progress(20 + int((i * 60) // len(test_loader.dataset)))
+            set_progress(20 + int((i * 60) // len(test_loader.dataset)))
 
 
 
 # UNET TEST FUNCTION
-def test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, set_progress: callable = None):
-    #load the model 
-    # FOR ONE CHANNEL INPUT
-    # model = Unet(1, 2)
-    # FOR TWO CHANNEL INPUT
-    model = Unet(2, 2)
+def unet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, set_progress: callable = None, hillshade = True):
+    #load the model
 
+    if hillshade:
+        # FOR TWO CHANNEL INPUT
+        model = Unet(2, 2)
+    else:
+        # FOR ONE CHANNEL INPUT
+        model = Unet(1, 2)
+    
     model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
     model.cuda()
     # model.cpu()
@@ -233,11 +236,12 @@ def test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, set_pr
     # output_tiff_file_names = []
     # output_numpy_file_names = []
 
-    # FOR ONE CHANNEL
-    # dataset = MBESDataset(test_file_dir, ignore_files, using_hillshade=False, using_inpainted=True)
-
-    # FOR TWO CHANNEL
-    dataset = MBESDataset(test_file_dir, ignore_files, using_hillshade=True, using_inpainted=True, cell_size=cell_size)
+    if hillshade:
+        # FOR TWO CHANNEL
+        dataset = MBESDataset(test_file_dir, ignore_files, using_hillshade=True, using_inpainted=True, cell_size=cell_size)
+    else:
+        # FOR ONE CHANNEL
+        dataset = MBESDataset(test_file_dir, ignore_files, using_hillshade=False, using_inpainted=True)
 
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
 
@@ -289,78 +293,79 @@ def test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, set_pr
 
             set_progress(20 + int((i * 60) // len(dataloader.dataset)))
 
+
 # HRNET TEST FUNCTION
-# def test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, set_progress: callable = None):
-#     a = argparse.Namespace(cfg='hrnet/config/hrnet_config.py',
-#                                    local_rank=-1,
-#                                    opts=[],
-#                                    seed=304)
-#     update_config(config, a)
+def hrnet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, set_progress: callable = None):
+    a = argparse.Namespace(cfg='hrnet/config/hrnet_config.py',
+                                   local_rank=-1,
+                                   opts=[],
+                                   seed=304)
+    update_config(config, a)
 
-#     model = get_seg_model(config)
+    model = get_seg_model(config)
 
-#     # print("conv1 shape:", model.conv1.weight.shape)
+    # print("conv1 shape:", model.conv1.weight.shape)
 
-#     model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
-#     model.cuda()
-#     model.eval()
+    model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
+    model.cuda()
+    model.eval()
 
-#     dataset = MBESDataset(test_file_dir, ignore_files, using_hillshade=False, using_inpainted=True)
-#     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
+    dataset = MBESDataset(test_file_dir, ignore_files, using_hillshade=False, using_inpainted=True)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
 
-#     with torch.no_grad():
-#         for i, data in enumerate(dataloader):
-#             image = data['image'].cuda()
-#             # image = torch.hstack([image, image, image])
-#             image_file_path = data['metadata']['label_name'][0]
-#             output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
+    with torch.no_grad():
+        for i, data in enumerate(dataloader):
+            image = data['image'].cuda()
+            # image = torch.hstack([image, image, image])
+            image_file_path = data['metadata']['label_name'][0]
+            output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
 
 
-#             # save_name = os.path.splitext(os.path.basename(image_file_path))[0] + ".png"
-#             # print(image.cpu().numpy())
-#             # print("Saving chunk")
-#             # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_getitem", save_name), image.cpu().numpy().squeeze()*255)
+            # save_name = os.path.splitext(os.path.basename(image_file_path))[0] + ".png"
+            # print(image.cpu().numpy())
+            # print("Saving chunk")
+            # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_getitem", save_name), image.cpu().numpy().squeeze()*255)
 
-#             pred = model(image)[0]
-#             # print(f"Pred shape before interpolate: {pred.shape}")
-#             pred = F.interpolate(pred, size=image.shape[2:], mode='bilinear', align_corners=True)
-#             # print(f"Post model shape: {pred.shape}")
-#             pred = pred.argmax(dim=1)
+            pred = model(image)[0]
+            # print(f"Pred shape before interpolate: {pred.shape}")
+            pred = F.interpolate(pred, size=image.shape[2:], mode='bilinear', align_corners=True)
+            # print(f"Post model shape: {pred.shape}")
+            pred = pred.argmax(dim=1)
 
-#             # Undo the resize
-#             resize = transforms.Resize((chunk_size, chunk_size), interpolation=transforms.InterpolationMode.NEAREST)
-#             pred = resize(pred)
+            # Undo the resize
+            resize = transforms.Resize((chunk_size, chunk_size), interpolation=transforms.InterpolationMode.NEAREST)
+            pred = resize(pred)
 
-#             pred = pred.cpu().detach().numpy()
-#             pred = np.squeeze(pred)
+            pred = pred.cpu().detach().numpy()
+            pred = np.squeeze(pred)
 
-#             # print(f"Prediction shape pre-contour: {pred.shape}")
+            # print(f"Prediction shape pre-contour: {pred.shape}")
 
-#             # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_model_out", "preclean_" + save_name), pred*255)
+            # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_model_out", "preclean_" + save_name), pred*255)
             
-#             # Remove small contours
-#             # min_area = 150  # adjust this value as needed
+            # Remove small contours
+            # min_area = 150  # adjust this value as needed
 
-#             # pred = pred.astype(np.uint8)
-#             # contours, _ = cv2.findContours(pred, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-#             # cleaned = np.zeros_like(pred)
-#             # for cnt in contours:
-#             #     area = cv2.contourArea(cnt)
-#             #     if area >= min_area:
-#             #         cv2.drawContours(cleaned, [cnt], -1, 1, thickness=cv2.FILLED)
-#             #     # else:
-#             #     #     print(f"Removing contour with area {area}")
-#             # pred = cleaned.astype(np.int32)
+            # pred = pred.astype(np.uint8)
+            # contours, _ = cv2.findContours(pred, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # cleaned = np.zeros_like(pred)
+            # for cnt in contours:
+            #     area = cv2.contourArea(cnt)
+            #     if area >= min_area:
+            #         cv2.drawContours(cleaned, [cnt], -1, 1, thickness=cv2.FILLED)
+            #     # else:
+            #     #     print(f"Removing contour with area {area}")
+            # pred = cleaned.astype(np.int32)
 
-#             # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_model_out", "postclean_" + save_name), pred*255)
+            # cv2.imwrite(os.path.join("/home/smitd/Documents/Copied_Temp_Chunks/saved_model_out", "postclean_" + save_name), pred*255)
 
-#             # print(f"Prediction shape post-contour: {pred.shape}")
+            # print(f"Prediction shape post-contour: {pred.shape}")
 
-#             # Save tiff and copy metadata
-#             plt.imsave(output_file_name, pred, cmap="jet")
-#             copy_tiff_metadata(image_file_path, output_file_name)
+            # Save tiff and copy metadata
+            plt.imsave(output_file_name, pred, cmap="jet")
+            copy_tiff_metadata(image_file_path, output_file_name)
 
-#             set_progress(20 + int((i * 60) // len(dataloader.dataset)))
+            set_progress(20 + int((i * 60) // len(dataloader.dataset)))
 
 def main(): 
     # train("./", 1000, 1e-4)

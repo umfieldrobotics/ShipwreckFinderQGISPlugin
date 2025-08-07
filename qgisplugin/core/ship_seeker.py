@@ -4,8 +4,20 @@ import os
 import glob
 import numpy as np
 from osgeo import gdal
-from qgisplugin.core.tiff_utils import crop_tiff, create_chunks, merge_chunks, get_tiff_size, merge_transparent_parts, copy_tiff_metadata, linear_interpolate_transparent, remove_invalid_pixels, ensure_valid_nodata, robust_remove_invalid_pixels, get_raster_resolution, remove_small_contours, remove_small_contours_chunked
-from qgisplugin.core.train import test
+from qgisplugin.core.tiff_utils import (crop_tiff,
+                                        create_chunks,
+                                        merge_chunks,
+                                        get_tiff_size,
+                                        merge_transparent_parts, 
+                                        copy_tiff_metadata, 
+                                        linear_interpolate_transparent,
+                                        remove_invalid_pixels,
+                                        ensure_valid_nodata,
+                                        robust_remove_invalid_pixels,
+                                        get_raster_resolution,
+                                        remove_small_contours,
+                                        remove_small_contours_chunked)
+from qgisplugin.core.train import unet_test, hrnet_test, basnet_test
 
 from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject, QgsPointXY, QgsRasterLayer, QgsRectangle
 # from qgis.core import Qgis, QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer, QgsProject, QgsReferencedRectangle
@@ -22,10 +34,10 @@ import shutil
 
 
 
-# WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/basnet_ruby-river-240_best.pt" # BEST BASNet
-# WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/hrnet_splendid-tree-238_best.pt" # BEST HRNet
-# WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unet_valiant-spaceship-247_best.pt" # BEST UNet
-WEIGHTS_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unetaux_rosy-elevator-246_best.pt" # BEST UNet Aux
+BASNET_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/basnet_ruby-river-240_best.pt" # BEST BASNet
+HRNET_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/hrnet_splendid-tree-238_best.pt" # BEST HRNet
+UNET_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unet_valiant-spaceship-247_best.pt" # BEST UNet
+UNETAUX_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unetaux_rosy-elevator-246_best.pt" # BEST UNet Aux
 
 from qgis.core import (
     QgsRasterFileWriter,
@@ -91,7 +103,7 @@ class ShipSeeker:
         if self.remove_tmp and os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
-    def execute(self, output_path, save_model_output = False, set_progress: callable = None,
+    def execute(self, output_path, save_model_output = False, model_arch = 'UNet Hillshade', set_progress: callable = None,
                 log: callable = print):
         """
         The core of the plugin
@@ -194,7 +206,17 @@ class ShipSeeker:
 
         # print("About to run test function")
 
-        test(self.temp_dir, ignore_images, WEIGHTS_PATH, chunk_size, res_x, set_progress)
+        if model_arch == "HRNet":
+            hrnet_test(self.temp_dir, ignore_images, HRNET_PATH, chunk_size, res_x, set_progress)
+        elif model_arch == "BASNet":
+            basnet_test(self.temp_dir, ignore_images, BASNET_PATH, chunk_size, res_x, set_progress)
+        else:
+            if model_arch == "UNet":
+                unet_test(self.temp_dir, ignore_images, UNET_PATH, chunk_size, res_x, set_progress, False)
+            else:
+                unet_test(self.temp_dir, ignore_images, UNETAUX_PATH, chunk_size, res_x, set_progress, True)
+
+        # test(self.temp_dir, ignore_images, WEIGHTS_PATH, chunk_size, res_x, set_progress)
 
         # print("Finished running test function")
 

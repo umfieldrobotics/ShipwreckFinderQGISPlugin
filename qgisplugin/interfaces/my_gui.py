@@ -37,7 +37,8 @@ from qgis.PyQt.QtWidgets import (
     QDialog,
     QVBoxLayout,
     QDialogButtonBox,
-    QLabel
+    QLabel,
+    QComboBox
 )
 from qgis.PyQt.QtCore import QCoreApplication, pyqtSignal
 from qgis.PyQt.QtGui import QCursor
@@ -264,15 +265,17 @@ class MyWidget(QDialog):
 
             extent_str = self.extentText.text()
 
+            model_arch = self.findChild(QComboBox, "modelDropdown").currentText()
+
             # run code
             result = ShipSeeker(raster_layer=raster_layer, extent_str=extent_str)\
-                .execute(output_path, save_model_output=self.savePredictionCheckBox.isChecked(), \
+                .execute(output_path, save_model_output=self.savePredictionCheckBox.isChecked(), model_arch=model_arch, \
                          set_progress=self.progressBar.setValue, log=self.log)
 
             self.progressBar.setValue(100)
 
             # write image to file
-            print("The output path will be: ", output_path)
+            # print("The output path will be: ", output_path)
 
             # Open result in QGIS
             if self.openCheckBox.isChecked():

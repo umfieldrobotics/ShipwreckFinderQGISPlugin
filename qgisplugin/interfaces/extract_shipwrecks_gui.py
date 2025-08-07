@@ -44,6 +44,7 @@ from qgisplugin.core.tiff_utils import copy_tiff_metadata
 from qgisplugin.core.extract_bb import BoundingBoxExtractor
 
 import fiona
+from fiona.crs import from_epsg
 from shapely.geometry import Polygon, mapping
 
 import matplotlib.pyplot as plt
@@ -142,18 +143,31 @@ class ExtractBoxesWidget(QDialog):
             'properties': {'id': 'int'}
         }
 
-        with fiona.open(output_path, 'w', driver='ESRI Shapefile', schema=schema, crs=f'epsg:{crs_epsg}') as shp:
-            for i, coords in enumerate(bounding_boxes_coords):       
+        print("Export shape 1")
+
+        with fiona.open(output_path, 'w', driver='ESRI Shapefile', schema=schema, crs=from_epsg(crs_epsg)) as shp:
+            for i, coords in enumerate(bounding_boxes_coords):
+                if coords[0] != coords[-1]:
+                    coords = coords + [coords[0]]
+
                 polygon = Polygon(coords)
+
+                print(f"Is valid: {polygon.is_valid}")
+                print(f"Area: {polygon.area}")
+
                 shp.write({
                     'geometry': mapping(polygon),
                     'properties': {'id': i}
                 })
 
+        print("Export shape 2")
+
         ## Export to vecor layer
         if self.openCheckBox.isChecked():
             output_shapefile_layer = QgsVectorLayer(output_path, 'Bounding Boxes', 'ogr')
             QgsProject.instance().addMapLayer(output_shapefile_layer, True)
+
+            print("Export shape 3")
 
             symbol = QgsSymbol.defaultSymbol(output_shapefile_layer.geometryType())
         
@@ -164,8 +178,11 @@ class ExtractBoxesWidget(QDialog):
             # Apply the symbol to the layer's renderer
             output_shapefile_layer.renderer().setSymbol(symbol)
             
+            print("Export shape 4")
+
             # Refresh the layer to see the changes
             output_shapefile_layer.triggerRepaint()
+            print("Export shape 5")
 
     def _run(self):
         """ Read all parameters and pass them on to the core function. """
