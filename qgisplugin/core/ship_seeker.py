@@ -174,7 +174,7 @@ class ShipSeeker:
         copy_tiff_metadata(cropped_path, output_path)
         set_progress(95)
 
-        output_csv = output_path.replace(".tif", "_ship_locs.csv")
+        output_csv = output_path.replace(".tif", "_shiplocations.csv")
         generate_csv(output_path, output_csv)
 
 

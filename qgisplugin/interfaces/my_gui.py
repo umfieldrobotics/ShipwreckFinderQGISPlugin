@@ -25,7 +25,7 @@ import tempfile
 
 from osgeo import gdal
 from qgis.gui import QgsFileWidget, QgsMapLayerComboBox
-from qgis.core import Qgis, QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer, QgsProject, QgsReferencedRectangle
+from qgis.core import Qgis, QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer, QgsProject, QgsReferencedRectangle, QgsVectorLayer, QgsMarkerSymbol
 
 from qgis.utils import iface
 from qgis.PyQt.uic import loadUi
@@ -283,6 +283,16 @@ class MyWidget(QDialog):
                 # output_raster_layer = QgsRasterLayer(output_path, 'New Image')
                 output_raster_layer = QgsRasterLayer(output_path, output_name)
                 QgsProject.instance().addMapLayer(output_raster_layer, True)
+                
+                # Add the csv showing wreck locations
+                output_csv = output_path.replace(".tif", "_shiplocations.csv")
+                csv_uri = f"file:///{output_csv}?delimiter=,&xField=x&yField=y"
+                csv_name = output_csv.split('/')[-1][:-4]
+                csv_layer = QgsVectorLayer(csv_uri, csv_name, "delimitedtext")
+                csv_layer.setCrs(output_raster_layer.crs())
+                QgsProject.instance().addMapLayer(csv_layer, True)
+
+
 
         # except AttributeError:
         #     self.log("Please select an image.")
