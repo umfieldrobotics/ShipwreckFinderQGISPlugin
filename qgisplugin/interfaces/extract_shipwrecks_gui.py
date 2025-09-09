@@ -138,33 +138,61 @@ class ExtractBoxesWidget(QDialog):
         return array_3d
     
     def export_shape_file(self, bounding_boxes_coords, crs_epsg, output_path):
-        schema = {
-            'geometry': 'Polygon',
-            'properties': {'id': 'int'}
-        }
+        from qgis.core import (QgsField, QgsFields, QgsFeature, 
+                          QgsGeometry, QgsPointXY, QgsVectorFileWriter,
+                          QgsCoordinateReferenceSystem, QgsWkbTypes)
+        from qgis.PyQt.QtCore import QVariant
 
-        print("Export shape 1")
-
-        with fiona.open(output_path, 'w', driver='ESRI Shapefile', schema=schema, crs=from_epsg(crs_epsg)) as shp:
-            for i, coords in enumerate(bounding_boxes_coords):
-                if coords[0] != coords[-1]:
-                    coords = coords + [coords[0]]
-
-                polygon = Polygon(coords)
-
-                print(f"Is valid: {polygon.is_valid}")
-                print(f"Area: {polygon.area}")
-
-                shp.write({
-                    'geometry': mapping(polygon),
-                    'properties': {'id': i}
-                })
-
-        print("Export shape 2")
-
-        ## Export to vecor layer
+        # Define the fields for the shapefile
+        fields = QgsFields()
+        fields.append(QgsField("id", QVariant.Int))
+        fields.append(QgsField("bbox_id", QVariant.String))
+        
+        # Create coordinate reference system
+        crs = QgsCoordinateReferenceSystem(f"EPSG:{crs_epsg}")
+        
+        # Set up the vector file writer
+        writer = QgsVectorFileWriter(
+            output_path,
+            "UTF-8",
+            fields,
+            QgsWkbTypes.Polygon,
+            crs,
+            "ESRI Shapefile"
+        )
+        
+        print("Export shape 2 - Writing features to shapefile")
+        
+        # Process each bounding box
+        for idx, bbox_coords in enumerate(bounding_boxes_coords):
+            # Ensure the polygon is closed by checking if first and last points are the same
+            coords_list = list(bbox_coords)
+            if len(coords_list) > 0 and coords_list[0] != coords_list[-1]:
+                coords_list.append(coords_list[0])  # Close the polygon
+            
+            # Convert coordinates to QgsPointXY objects
+            qgs_points = [QgsPointXY(float(x), float(y)) for x, y in coords_list]
+            
+            # Create polygon geometry
+            polygon_geom = QgsGeometry.fromPolygonXY([qgs_points])
+            
+            # Create feature
+            feature = QgsFeature()
+            feature.setGeometry(polygon_geom)
+            feature.setAttributes([idx + 1, f"bbox_{idx + 1}"])
+            
+            # Add feature to the writer
+            writer.addFeature(feature)
+        
+        # Delete the writer to ensure all data is written
+        del writer
+        
+        print(f"Shapefile created successfully at: {output_path}")
+        
+        ## Export to vector layer
         if self.openCheckBox.isChecked():
             output_shapefile_layer = QgsVectorLayer(output_path, 'Bounding Boxes', 'ogr')
+                
             QgsProject.instance().addMapLayer(output_shapefile_layer, True)
 
             print("Export shape 3")
@@ -183,6 +211,9 @@ class ExtractBoxesWidget(QDialog):
             # Refresh the layer to see the changes
             output_shapefile_layer.triggerRepaint()
             print("Export shape 5")
+    
+
+
 
     def _run(self):
         """ Read all parameters and pass them on to the core function. """
