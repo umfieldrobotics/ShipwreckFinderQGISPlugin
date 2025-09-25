@@ -2,7 +2,8 @@
 
 This [QGIS](https://www.qgis.org/en/site/) plugin finds shipwrecks from multibeam sonar data. 
 
-![QGIS_Main](https://github.com/umfieldrobotics/ShipwreckSeekerQGISPlugin/assets/54146662/ef368c58-eb20-4464-bf12-12cca2da3007)
+![QGIS_Main](https://github.com/user-attachments/assets/946e6332-d93b-4585-94af-745456292167)
+
 
 For installation instructions, a list of features, and various demos please visit [the wiki page](https://github.com/umfieldrobotics/ShipwreckSeekerQGISPlugin/wiki)
 
@@ -17,3 +18,15 @@ License as published by the Free Software Foundation, either version 3 of the Li
 
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
 warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+### BibTeX
+
+```bibtex
+@inproceedings{shep2025shipwreckfinder,
+  title={ShipwreckFinder: A QGIS Tool for Shipwreck Detection in Multibeam Sonar Data},
+  author={Sheppard, Anja and Smithline, Tyler and Scheffer, Andrew and Smith, David and Sethuraman, Advaith V. and Bird, Ryan and Lin, Sabrina and Skinner, Katherine A.},
+  booktitle={},
+  pages={},
+  year={2025},
+  organization={IEEE}
+}
