@@ -1,9 +1,8 @@
 # Shipwreck Seeker QGIS Plugin
 
-This [QGIS](https://www.qgis.org/en/site/) plugin finds shipwrecks from multibeam sonar data. 
-
 ![QGIS_Main](https://github.com/user-attachments/assets/946e6332-d93b-4585-94af-745456292167)
 
+This [QGIS](https://www.qgis.org/en/site/) plugin identifies potential shipwreck sites from multibeam sonar data. Raster layers are passed through a deep learning segmentation model to produce a binary segmentation mask that clearly identifies the shipwreck site, and bounding boxes can be extracted from these segmentation masks if desired. Four different models are available for use, each trained with a unique backbone, and each with their own strengths and weaknesses.
 
 For installation instructions, a list of features, and various demos please visit [the wiki page](https://github.com/umfieldrobotics/ShipwreckSeekerQGISPlugin/wiki)
 
@@ -25,8 +24,7 @@ warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Ge
 @inproceedings{shep2025shipwreckfinder,
   title={ShipwreckFinder: A QGIS Tool for Shipwreck Detection in Multibeam Sonar Data},
   author={Sheppard, Anja and Smithline, Tyler and Scheffer, Andrew and Smith, David and Sethuraman, Advaith V. and Bird, Ryan and Lin, Sabrina and Skinner, Katherine A.},
-  booktitle={},
-  pages={},
+  booktitle={Proceedings of OCEANS Great Lakes 2025},
   year={2025},
   organization={IEEE}
 }
