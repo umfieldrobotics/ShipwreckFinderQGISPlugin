@@ -198,10 +198,22 @@
              <property name="saveCollapsedState">
               <bool>true</bool>
              </property>
-             <layout class="QFormLayout" name="formLayout">
-              <item row="0" column="0" colspan="2">
+             <layout class="QGridLayout" name="gridLayout_3">
+              <item row="0" column="0">
                <layout class="QGridLayout" name="gridLayout">
-                <item row="0" column="1" colspan="2">
+                <item row="0" column="0">
+                 <widget class="QLabel" name="label_6">
+                  <property name="font">
+                   <font>
+                    <pointsize>10</pointsize>
+                   </font>
+                  </property>
+                  <property name="text">
+                   <string>Set contours to 0 below this threshold:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="1">
                  <widget class="QDoubleSpinBox" name="constantSpinBox">
                   <property name="font">
                    <font>
@@ -212,28 +224,16 @@
                    <number>3</number>
                   </property>
                   <property name="minimum">
-                   <double>0.001000000000000</double>
+                   <double>0.000000000000000</double>
                   </property>
                   <property name="maximum">
-                   <double>1000000.000000000000000</double>
+                   <double>1.000000000000000</double>
                   </property>
                   <property name="singleStep">
                    <double>0.100000000000000</double>
                   </property>
                   <property name="value">
-                   <double>0.010000000000000</double>
-                  </property>
-                 </widget>
-                </item>
-                <item row="0" column="0">
-                 <widget class="QLabel" name="label_6">
-                  <property name="font">
-                   <font>
-                    <pointsize>10</pointsize>
-                   </font>
-                  </property>
-                  <property name="text">
-                   <string>Ship Segmentation Threshold:</string>
+                   <double>0.000000000000000</double>
                   </property>
                  </widget>
                 </item>
@@ -245,35 +245,31 @@
                    </font>
                   </property>
                   <property name="text">
-                   <string>Set cells to 0 below this threshold:</string>
+                   <string>BASNet saliency map threshold</string>
                   </property>
                  </widget>
                 </item>
                 <item row="1" column="1">
-                 <widget class="QSlider" name="percentageSlider">
-                  <property name="minimum">
-                   <number>0</number>
-                  </property>
-                  <property name="maximum">
-                   <number>100</number>
-                  </property>
-                  <property name="value">
-                   <number>50</number>
-                  </property>
-                  <property name="orientation">
-                   <enum>Qt::Horizontal</enum>
-                  </property>
-                 </widget>
-                </item>
-                <item row="1" column="2">
-                 <widget class="QLabel" name="percentageSliderValue">
+                 <widget class="QDoubleSpinBox" name="constantSpinBox_2">
                   <property name="font">
                    <font>
                     <pointsize>10</pointsize>
                    </font>
                   </property>
-                  <property name="text">
-                   <string>50%</string>
+                  <property name="decimals">
+                   <number>3</number>
+                  </property>
+                  <property name="minimum">
+                   <double>0.100000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>1.000000000000000</double>
+                  </property>
+                  <property name="singleStep">
+                   <double>0.100000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>0.100000000000000</double>
                   </property>
                  </widget>
                 </item>

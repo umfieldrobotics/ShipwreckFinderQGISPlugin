@@ -1,3 +1,17 @@
+import os
+import sys
+def setup_libs():
+    current_dir = os.path.dirname(__file__)
+    while current_dir != os.path.dirname(current_dir):
+        if os.path.exists(os.path.join(current_dir, 'libs')):
+            libs_dir = os.path.join(current_dir, 'libs')
+            if libs_dir not in sys.path:
+                sys.path.insert(0, libs_dir)
+            return
+        current_dir = os.path.dirname(current_dir)
+setup_libs()
+
+
 import torch 
 import cv2
 
@@ -6,12 +20,10 @@ from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 import torch.nn.functional as F
-from PIL import Image
 from matplotlib import pyplot as plt
 from torch.autograd import Variable
 import wandb
 import numpy as np
-import os 
 import glob 
 import argparse
 from qgisplugin.core.data import MBESDataset
@@ -112,7 +124,6 @@ def train(save_path, num_epochs, lr):
 
         torch.save(model.state_dict(), os.path.join(save_path, "model.pt".format(epoch)))
 
-
 def crop_center(image, crop_height=512, crop_width=512):
     """
     Crops the center of the image to the specified dimensions.
@@ -130,16 +141,17 @@ def crop_center(image, crop_height=512, crop_width=512):
     start_x = (width - crop_width) // 2
     return image[start_y:start_y + crop_height, start_x:start_x + crop_width]
 
-
 # BASNET TEST FUNCTION
-def basnet_test(test_path, ignore_files, weight_path, chunk_size, cell_size, set_progress: callable=None):
-    threshold = 0.1
+def basnet_test(test_path, ignore_files, weight_path, chunk_size, cell_size, thresh=0.1, set_progress: callable=None):
+    threshold = thresh
 
-    # Load the model
+    # Load and prep the model
     model = BASNet(3, 1)
     model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
-    model.cuda()
-
+    if torch.cuda.is_available():
+        model.cuda()
+    else:
+        model.cpu()
     model.eval()
 
     test_dataset = MBESDataset(test_path, ignore_files, using_hillshade=False, using_inpainted=True, resize_to_div_16=True)
@@ -153,7 +165,12 @@ def basnet_test(test_path, ignore_files, weight_path, chunk_size, cell_size, set
             output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
 
             
-            image_v = Variable(image, requires_grad=True).cuda()
+            image_v = Variable(image, requires_grad=True)
+
+            if torch.cuda.is_available():
+                image_v = image_v.cuda()
+            else:
+                image_v = image_v.cpu()
 
             _, d1, _, _, _, _, _, _ = model(image_v)
 
@@ -180,12 +197,8 @@ def basnet_test(test_path, ignore_files, weight_path, chunk_size, cell_size, set
 
             set_progress(20 + int((i * 60) // len(test_loader.dataset)))
 
-
-
 # UNET TEST FUNCTION
 def unet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, set_progress: callable = None, hillshade = True):
-    #load the model
-
     if hillshade:
         # FOR TWO CHANNEL INPUT
         model = Unet(2, 2)
@@ -194,10 +207,11 @@ def unet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, s
         model = Unet(1, 2)
     
     model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
-    model.cuda()
-
+    if torch.cuda.is_available():
+        model.cuda()
+    else:
+        model.cpu()
     model.eval()
-
 
     if hillshade:
         # FOR TWO CHANNEL
@@ -211,11 +225,14 @@ def unet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, s
     with torch.no_grad():
         for i, data in enumerate(dataloader):
             # Get data and prep file paths
-            image = data['image'].cuda()
+            image = data['image']
+
+            if torch.cuda.is_available():
+                image = image.cuda()
+            else:
+                image = image.cpu()
+            
             image_file_path = data['metadata']['label_name'][0] # "Label" is the corresponding .tif file for metadata
-
-            save_name = os.path.splitext(os.path.basename(image_file_path))[0] + ".png"
-
 
             output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
 
@@ -236,13 +253,11 @@ def unet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, s
             pred = np.expand_dims(pred, axis=0)
             pred = np.squeeze(pred)
 
-
             # Save tiff and copy metadata
             plt.imsave(output_file_name, pred, cmap="jet")
             copy_tiff_metadata(image_file_path, output_file_name)
 
             set_progress(20 + int((i * 60) // len(dataloader.dataset)))
-
 
 # HRNET TEST FUNCTION
 def hrnet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, set_progress: callable = None):
@@ -254,10 +269,11 @@ def hrnet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, 
 
     model = get_seg_model(config)
 
-    # print("conv1 shape:", model.conv1.weight.shape)
-
     model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
-    model.cuda()
+    if torch.cuda.is_available():
+        model.cuda()
+    else:
+        model.cpu()
     model.eval()
 
     dataset = MBESDataset(test_file_dir, ignore_files, using_hillshade=False, using_inpainted=True)
@@ -265,7 +281,13 @@ def hrnet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, 
 
     with torch.no_grad():
         for i, data in enumerate(dataloader):
-            image = data['image'].cuda()
+            image = data['image']
+
+            if torch.cuda.is_available():
+                image = image.cuda()
+            else:
+                image = image.cpu()
+
             image_file_path = data['metadata']['label_name'][0]
             output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
 
@@ -286,7 +308,6 @@ def hrnet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, 
 
             pred = pred.cpu().detach().numpy()
             pred = np.squeeze(pred)
-
 
             # Save tiff and copy metadata
             plt.imsave(output_file_name, pred, cmap="jet")

@@ -1,4 +1,8 @@
 qgisplugin/core/mbes_unet.pt
+qgisplugin/core/basnet_ruby-river-240_best.pt
+qgisplugin/core/hrnet_splendid-tree-238_best.pt
+qgisplugin/core/unet_valiant-spaceship-247_best.pt
+qgisplugin/core/unetaux_rosy-elevator-246_best.pt
 *.tif*
 
 # do not store compiled qt resource files

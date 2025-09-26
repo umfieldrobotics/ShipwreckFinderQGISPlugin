@@ -1,6 +1,20 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
+
+def setup_libs():
+    current_dir = os.path.dirname(__file__)
+    while current_dir != os.path.dirname(current_dir):
+        if os.path.exists(os.path.join(current_dir, 'libs')):
+            libs_dir = os.path.join(current_dir, 'libs')
+            if libs_dir not in sys.path:
+                sys.path.insert(0, libs_dir)
+            return
+        current_dir = os.path.dirname(current_dir)
+setup_libs()
+
+
 import glob
 import numpy as np
 from osgeo import gdal
@@ -25,10 +39,11 @@ import rasterio
 import random
 import shutil
 
-BASNET_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/basnet_ruby-river-240_best.pt" # BEST BASNet
-HRNET_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/hrnet_splendid-tree-238_best.pt" # BEST HRNet
-UNET_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unet_valiant-spaceship-247_best.pt" # BEST UNet
-UNETAUX_PATH = "/home/smitd/DrewShipwreckSeeker/ShipwreckSeekerQGISPlugin/qgisplugin/core/unetaux_rosy-elevator-246_best.pt" # BEST UNet Aux
+script_dir = os.path.dirname(os.path.abspath(__file__))
+BASNET_PATH = os.path.join(script_dir, "basnet_ruby-river-240_best.pt") # BEST BASNet
+HRNET_PATH = os.path.join(script_dir, "hrnet_splendid-tree-238_best.pt") # BEST HRNet
+UNET_PATH = os.path.join(script_dir, "unet_valiant-spaceship-247_best.pt") # BEST UNet
+UNETAUX_PATH = os.path.join(script_dir, "unetaux_rosy-elevator-246_best.pt") # BEST UNet Aux
 
 from qgis.core import (
     QgsRasterFileWriter,
@@ -90,8 +105,8 @@ class ShipSeeker:
         if self.remove_tmp and os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
-    def execute(self, output_path, save_model_output = False, model_arch = 'UNet Hillshade', set_progress: callable = None,
-                log: callable = print):
+    def execute(self, output_path, save_model_output = False, model_arch = 'UNet Hillshade', contour_thresh = 0.01, basnet_thresh = 0.0,
+                set_progress: callable = None, log: callable = print):
         """
         The core of the plugin
         """
@@ -117,16 +132,14 @@ class ShipSeeker:
         width, height = get_tiff_size(cropped_path)
         set_progress(15)
   
-
+        # Create chunks of size (200m, 200m) depending on input resolution
         chunk_size = int(200 / abs(res_x))
-    
         rows, cols = create_chunks(cropped_path, self.temp_dir, chunk_size)
-
 
         ignore_images = [cropped_path, geotiff_path]
         input_files = glob.glob(os.path.join(self.temp_dir, "*"))
 
-
+        # Create .npy files to be passed through the model
         for file in input_files:
             if file in ignore_images:
                 continue
@@ -138,13 +151,13 @@ class ShipSeeker:
             np.save(output_file_path, array)            
 
         set_progress(20)
-
-
-
+        is_basnet = False
+        # Perform inference based on model selection
         if model_arch == "HRNet":
             hrnet_test(self.temp_dir, ignore_images, HRNET_PATH, chunk_size, res_x, set_progress)
         elif model_arch == "BASNet":
-            basnet_test(self.temp_dir, ignore_images, BASNET_PATH, chunk_size, res_x, set_progress)
+            basnet_test(self.temp_dir, ignore_images, BASNET_PATH, chunk_size, res_x, basnet_thresh, set_progress)
+            is_basnet = True
         else:
             if model_arch == "UNet":
                 unet_test(self.temp_dir, ignore_images, UNET_PATH, chunk_size, res_x, set_progress, False)
@@ -154,7 +167,7 @@ class ShipSeeker:
         set_progress(80)
 
         # Merge the chunks
-        merge_chunks(self.temp_dir, rows, cols, output_path, save_model_output)
+        merge_chunks(self.temp_dir, rows, cols, output_path, save_model_output, is_basnet)
 
 
         set_progress(85)
@@ -168,7 +181,7 @@ class ShipSeeker:
         invalid_pixels = robust_remove_invalid_pixels(cropped_path, output_path, output_path)
 
         # Remove small contours
-        contour_threshold = 0 # 0.0006 # ------------- THIS IS THE ADJUSTABLE THRESHOLD THAT WILL BECOME A PARAMETER
+        contour_threshold = contour_thresh # 0.0006 # ------------- THIS IS THE ADJUSTABLE THRESHOLD THAT WILL BECOME A PARAMETER
         remove_small_contours_chunked(output_path, output_path, contour_threshold, invalid_pixels)
 
         copy_tiff_metadata(cropped_path, output_path)

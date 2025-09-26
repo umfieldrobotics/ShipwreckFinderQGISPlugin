@@ -19,13 +19,30 @@
 | You should have received a copy of the GNU General Public License (COPYING.txt). If not see www.gnu.org/licenses.
 | ----------------------------------------------------------------------------------------------------------------------
 """
+
+import os
+import sys
+def setup_libs():
+    current_dir = os.path.dirname(__file__)
+    while current_dir != os.path.dirname(current_dir):
+        if os.path.exists(os.path.join(current_dir, 'libs')):
+            libs_dir = os.path.join(current_dir, 'libs')
+            if libs_dir not in sys.path:
+                sys.path.insert(0, libs_dir)
+            return
+        current_dir = os.path.dirname(current_dir)
+setup_libs()
+
+
 import os.path as op
 import numpy as np
 import tempfile
 
 from osgeo import gdal
 from qgis.gui import QgsFileWidget, QgsMapLayerComboBox
-from qgis.core import Qgis, QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer, QgsProject, QgsReferencedRectangle, QgsVectorLayer, QgsMarkerSymbol
+from qgis.core import (Qgis, QgsProviderRegistry, QgsMapLayerProxyModel,
+                       QgsRasterLayer, QgsProject, QgsReferencedRectangle,
+                       QgsVectorLayer, QgsMarkerSymbol)
 
 from qgis.utils import iface
 from qgis.PyQt.uic import loadUi
@@ -42,7 +59,6 @@ from qgis.PyQt.QtWidgets import (
 )
 from qgis.PyQt.QtCore import QCoreApplication, pyqtSignal
 from qgis.PyQt.QtGui import QCursor
-
 
 from qgisplugin.core.ship_seeker import ShipSeeker
 from qgisplugin.interfaces import import_image, write_image
@@ -80,8 +96,6 @@ class MyWidget(QDialog):
         super(MyWidget, self).__init__()
         loadUi(op.join(op.dirname(__file__), 'my_gui.ui'), self)
 
-        # todo: link widgets to code in your __init__ function
-
         if iface is not None:
             canvas = iface.mapCanvas()
             self.prevMapTool = canvas.mapTool()
@@ -102,7 +116,7 @@ class MyWidget(QDialog):
         self.extentButton.clicked.connect(self.selectExtent)
 
         # other parameters
-        self.percentageSlider.valueChanged.connect(self.updateSliderPercent)
+        # self.percentageSlider.valueChanged.connect(self.updateSliderPercent)
 
         # output
         self.outputFileWidget.lineEdit().setReadOnly(True)
@@ -180,8 +194,8 @@ class MyWidget(QDialog):
         r = self.tool.rectangle()
         self.setExtentValueFromRect(r)
 
-    def updateSliderPercent(self, value):
-        self.percentageSliderValue.setText(f"{value}%")
+    # def updateSliderPercent(self, value):
+    #     self.percentageSliderValue.setText(f"{value}%")
 
     def selectExtent(self):
         popupmenu = QMenu()
@@ -219,7 +233,6 @@ class MyWidget(QDialog):
 
     def _browse_for_image(self):
         """ Browse for an image raster file. """
-
         path = QFileDialog.getOpenFileName(filter=QgsProviderRegistry.instance().fileRasterFilters())[0]
 
         try:
@@ -230,9 +243,6 @@ class MyWidget(QDialog):
                 QgsProject.instance().addMapLayer(layer, True)
 
                 self.imageDropDown.setLayer(layer)
-
-        # except AssertionError:
-        #     self.log("'" + path + "' not recognized as a supported file format.")
         except Exception as e:
             self.log(e)
             raise e
@@ -247,9 +257,6 @@ class MyWidget(QDialog):
 
     def _run(self):
         """ Read all parameters and pass them on to the core function. """
-
-        # todo: read all parameters, throw errors when needed, give user feedback and run code
-
         try:
             # Only temp file possible when result is opened in QGIS
             output_path = self.outputFileWidget.filePath()
@@ -260,22 +267,18 @@ class MyWidget(QDialog):
             # Get parameters
             raster_layer = self.imageDropDown.currentLayer()
 
-            # image_path = self.imageDropDown.currentLayer().source()
-            # image, metadata = import_image(image_path)
-
             extent_str = self.extentText.text()
 
             model_arch = self.findChild(QComboBox, "modelDropdown").currentText()
 
+            contour_thresh = self.constantSpinBox.value()
+            basnet_saliency_thresh = self.constantSpinBox_2.value()
             # run code
             result = ShipSeeker(raster_layer=raster_layer, extent_str=extent_str)\
                 .execute(output_path, save_model_output=self.savePredictionCheckBox.isChecked(), model_arch=model_arch, \
-                         set_progress=self.progressBar.setValue, log=self.log)
+                         contour_thresh=contour_thresh, basnet_thresh=basnet_saliency_thresh, set_progress=self.progressBar.setValue, log=self.log)
 
             self.progressBar.setValue(100)
-
-            # write image to file
-            # print("The output path will be: ", output_path)
 
             # Open result in QGIS
             if self.openCheckBox.isChecked():
@@ -291,11 +294,6 @@ class MyWidget(QDialog):
                 csv_layer = QgsVectorLayer(csv_uri, csv_name, "delimitedtext")
                 csv_layer.setCrs(output_raster_layer.crs())
                 QgsProject.instance().addMapLayer(csv_layer, True)
-
-
-
-        # except AttributeError:
-        #     self.log("Please select an image.")
         except Exception as e:
             self.log(e)
             raise e

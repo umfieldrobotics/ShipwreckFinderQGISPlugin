@@ -1,7 +1,18 @@
 import os
+import sys
+def setup_libs():
+    current_dir = os.path.dirname(__file__)
+    while current_dir != os.path.dirname(current_dir):
+        if os.path.exists(os.path.join(current_dir, 'libs')):
+            libs_dir = os.path.join(current_dir, 'libs')
+            if libs_dir not in sys.path:
+                sys.path.insert(0, libs_dir)
+            return
+        current_dir = os.path.dirname(current_dir)
+setup_libs()
+
 import math
 import numpy as np
-from PIL import Image
 import cv2
 import rasterio
 import csv
@@ -142,7 +153,7 @@ def create_chunks(input_path, output_dir, chunk_size=400):
 
     return y_chunks, x_chunks # rows, cols
 
-def merge_chunks(output_dir, rows, cols, output_path, save_model_output):
+def merge_chunks(output_dir, rows, cols, output_path, save_model_output, is_basnet=False):
     # Merge the tiff files
     chunk_tiff_files = [os.path.join(output_dir, f) for f in os.listdir(output_dir) if "_pred.tiff" in f]
 
@@ -153,10 +164,11 @@ def merge_chunks(output_dir, rows, cols, output_path, save_model_output):
     else:
         robust_gdal_merge(chunk_tiff_files, output_path)
 
-    if save_model_output:
+    if save_model_output and not is_basnet:
         # Merge the npy files
         chunk_npy_files = [os.path.join(output_dir, f) for f in os.listdir(output_dir) if "_pred.npy" in f]
         chunk_shape = np.load(chunk_npy_files[0]).shape
+
         final_image_shape = (chunk_shape[0], chunk_shape[1], rows*chunk_shape[2], cols*chunk_shape[3])  # rows, cols
         final_image = np.zeros(final_image_shape)
 

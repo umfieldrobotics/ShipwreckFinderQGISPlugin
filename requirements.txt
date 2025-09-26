@@ -7,3 +7,7 @@ wandb
 opencv-python
 shapely
 fiona
+PyQt5
+scipy
+Pillow
+rasterio

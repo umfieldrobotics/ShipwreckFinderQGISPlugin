@@ -19,19 +19,37 @@
 | You should have received a copy of the GNU General Public License (COPYING.txt). If not see www.gnu.org/licenses.
 | ----------------------------------------------------------------------------------------------------------------------
 """
+import os
+import sys
+def setup_libs():
+    current_dir = os.path.dirname(__file__)
+    while current_dir != os.path.dirname(current_dir):
+        if os.path.exists(os.path.join(current_dir, 'libs')):
+            libs_dir = os.path.join(current_dir, 'libs')
+            if libs_dir not in sys.path:
+                sys.path.insert(0, libs_dir)
+            return
+        current_dir = os.path.dirname(current_dir)
+setup_libs()
+
+
 import os.path as op
 import numpy as np
 import tempfile
 
 from osgeo import gdal, osr
-from qgis.gui import QgsFileWidget, QgsMapLayerComboBox
-from qgis.core import Qgis, QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer,QgsVectorLayer, QgsProject, QgsReferencedRectangle, QgsSymbol, QgsFillSymbol, QgsRendererCategory, QgsCategorizedSymbolRenderer
+from qgis.gui import QgsFileWidget
+from qgis.core import (Qgis, QgsProviderRegistry, QgsMapLayerProxyModel,
+                       QgsRasterLayer,QgsVectorLayer, QgsProject,
+                       QgsSymbol, QgsField, QgsFields,
+                       QgsFeature, QgsGeometry, QgsPointXY,
+                       QgsVectorFileWriter, QgsCoordinateReferenceSystem, QgsWkbTypes)
 
 from qgis.utils import iface
 from qgis.PyQt.uic import loadUi
 from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QDialogButtonBox
 
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import Qt, QVariant
 
 from qgis.PyQt.QtWidgets import (
     QDialog,
@@ -78,19 +96,14 @@ class ExtractBoxesWidget(QDialog):
         self.OKClose.accepted.connect(self._run)
         self.OKClose.rejected.connect(self.close)
 
-        
-
-
     def log(self, text):
         # append text to log window
         self.logBrowser.append(str(text) + '\n')
         # open the widget on the log screen
         self.tabWidget.setCurrentIndex(self.tabWidget.indexOf(self.tab_log))
 
-
     def _browse_for_image(self):
         """ Browse for an image raster file. """
-
         path = QFileDialog.getOpenFileName(filter=QgsProviderRegistry.instance().fileRasterFilters())[0]
 
         try:
@@ -105,16 +118,12 @@ class ExtractBoxesWidget(QDialog):
 
                 pixmap = QPixmap(path)
                 self.imageLabel.setPixmap(pixmap.scaled(self.imageLabel.size(), aspectRatioMode=Qt.KeepAspectRatio))
-
-        # except AssertionError:
-        #     self.log("'" + path + "' not recognized as a supported file format.")
         except Exception as e:
             self.log(e)
             raise e
 
     def _choose_image(self):
         """ When the user browsers for an image """
-
         layer = self.imageDropDown.currentLayer()
 
         if layer is None:
@@ -138,11 +147,6 @@ class ExtractBoxesWidget(QDialog):
         return array_3d
     
     def export_shape_file(self, bounding_boxes_coords, crs_epsg, output_path):
-        from qgis.core import (QgsField, QgsFields, QgsFeature, 
-                          QgsGeometry, QgsPointXY, QgsVectorFileWriter,
-                          QgsCoordinateReferenceSystem, QgsWkbTypes)
-        from qgis.PyQt.QtCore import QVariant
-
         # Define the fields for the shapefile
         fields = QgsFields()
         fields.append(QgsField("id", QVariant.Int))
@@ -160,15 +164,13 @@ class ExtractBoxesWidget(QDialog):
             crs,
             "ESRI Shapefile"
         )
-        
-        print("Export shape 2 - Writing features to shapefile")
-        
+                
         # Process each bounding box
         for idx, bbox_coords in enumerate(bounding_boxes_coords):
-            # Ensure the polygon is closed by checking if first and last points are the same
+            # Check if first and last points are the same
             coords_list = list(bbox_coords)
             if len(coords_list) > 0 and coords_list[0] != coords_list[-1]:
-                coords_list.append(coords_list[0])  # Close the polygon
+                coords_list.append(coords_list[0]) # Close the polygon
             
             # Convert coordinates to QgsPointXY objects
             qgs_points = [QgsPointXY(float(x), float(y)) for x, y in coords_list]
@@ -186,43 +188,31 @@ class ExtractBoxesWidget(QDialog):
         
         # Delete the writer to ensure all data is written
         del writer
-        
-        print(f"Shapefile created successfully at: {output_path}")
-        
+                
         ## Export to vector layer
         if self.openCheckBox.isChecked():
             output_shapefile_layer = QgsVectorLayer(output_path, 'Bounding Boxes', 'ogr')
                 
             QgsProject.instance().addMapLayer(output_shapefile_layer, True)
 
-            print("Export shape 3")
-
             symbol = QgsSymbol.defaultSymbol(output_shapefile_layer.geometryType())
         
             # Set the color with transparency (e.g., 50% transparent red)
-            color = QColor(255, 0, 0, 128)  # Red with 50% transparency
+            color = QColor(255, 0, 0, 128) # Red with 50% transparency
             symbol.setColor(color)
             
             # Apply the symbol to the layer's renderer
             output_shapefile_layer.renderer().setSymbol(symbol)
-            
-            print("Export shape 4")
 
             # Refresh the layer to see the changes
             output_shapefile_layer.triggerRepaint()
-            print("Export shape 5")
-    
-
-
 
     def _run(self):
         """ Read all parameters and pass them on to the core function. """
-
         raster_layer = self.imageDropDown.currentLayer()
         raster_path = raster_layer.dataProvider().dataSourceUri()
         output_path = self.outputFileWidget.filePath()
 
-        
         # Parse the image of tiff
         self.progressBar.setValue(10)
         url = raster_path.split('|')[0]
@@ -235,12 +225,11 @@ class ExtractBoxesWidget(QDialog):
 
         np_segmentation_image = self.raster_to_numpy(raster_ds)
 
-
         # Get the CRS of the TIFF
         projection = raster_ds.GetProjection()
         spatial_ref = osr.SpatialReference()
         spatial_ref.ImportFromWkt(projection)
-        crs_epsg = spatial_ref.GetAttrValue('AUTHORITY', 1)  # EPSG code
+        crs_epsg = spatial_ref.GetAttrValue('AUTHORITY', 1) # EPSG code
         geotransform = raster_ds.GetGeoTransform()
 
         self.progressBar.setValue(20)
@@ -270,7 +259,6 @@ def _run():
     z.show()
 
     app.exec_()
-
 
 if __name__ == '__main__':
     _run()
