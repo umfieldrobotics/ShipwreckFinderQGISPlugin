@@ -19,6 +19,12 @@
 | You should have received a copy of the GNU General Public License (COPYING.txt). If not see www.gnu.org/licenses.
 | ----------------------------------------------------------------------------------------------------------------------
 """
+from ..safe_libs_setup import setup_libs, safe_import_ml_libraries
+
+setup_libs()
+libs = safe_import_ml_libraries()
+
+
 from qgis.PyQt.QtCore import QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 from qgis.core import QgsProcessingAlgorithm, QgsProcessingParameterRasterLayer, QgsProcessingParameterNumber, \

@@ -1,15 +1,28 @@
-import torch 
+from ..safe_libs_setup import setup_libs, safe_import_ml_libraries
 
+setup_libs()
+libs = safe_import_ml_libraries()
+
+import os
+import torch 
+import cv2
 from qgisplugin.core.models import *
 from tqdm import tqdm 
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-from PIL import Image
+import torch.nn.functional as F
 from matplotlib import pyplot as plt
+from torch.autograd import Variable
 import wandb
 import numpy as np
-import os 
 import glob 
+import argparse
+from qgisplugin.core.data import MBESDataset
+from qgisplugin.core.tiff_utils import copy_tiff_metadata
+
+
+from qgisplugin.core.hrnet.seg_hrnet_ocr import *
+from qgisplugin.core.hrnet.config import config, update_config
 
 class CustomDataset(Dataset):
     def __init__(self, root_dir, transform=None, byt=False):
@@ -27,11 +40,6 @@ class CustomDataset(Dataset):
 
         image = torch.from_numpy(np.load(image_name)).float().unsqueeze(0)
         label = (torch.from_numpy(np.load(label_name)) > 0).long()
-
-        #shift the image by the min value 
-        # if self.byt:
-        #     image -= image.min()
-        #     image = ((image/500.0)*255.0).to(torch.uint8) #scale 
 
         # Apply transforms if provided
         if self.transform:
@@ -87,10 +95,6 @@ def train(save_path, num_epochs, lr):
             pred = model(image)
             loss = ce_loss(pred, label)
 
-            #calculate train miou for the entire tensor 
-            # pred = pred.argmax(dim=1)
-            # miou = torch.mean(iou(pred, label))
-            # wandb.log({"miou": miou.item()})
             loss.backward()
             optim.step()
             ep_loss.append(loss.item())
@@ -107,11 +111,9 @@ def train(save_path, num_epochs, lr):
             pred = np.argmax(pred, axis=0)
             pred = np.expand_dims(pred, axis=0)
             wandb.log({"pred": wandb.Image(pred)})
-        # print("Epoch: {}, Loss: {}".format(epoch, np.mean(ep_loss)))
 
 
         torch.save(model.state_dict(), os.path.join(save_path, "model.pt".format(epoch)))
-
 
 def crop_center(image, crop_height=512, crop_width=512):
     """
@@ -130,64 +132,192 @@ def crop_center(image, crop_height=512, crop_width=512):
     start_x = (width - crop_width) // 2
     return image[start_y:start_y + crop_height, start_x:start_x + crop_width]
 
-def test(test_files, weight_path):
-    #load the model 
-    model = Unet(1, 2)
+# BASNet Inference Function
+def basnet_test(test_path, ignore_files, weight_path, chunk_size, cell_size, thresh=0.1, set_progress: callable=None):
+    threshold = thresh
+
+    # Load the model
+    model = BASNet(3, 1)
     model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
-    model #.cuda()
 
+    # If cuda is available, use it
+    if torch.cuda.is_available():
+        model.cuda()
+    else:
+        model.cpu()
+    model.eval()
 
-    output_tiff_file_names = []
-    output_numpy_file_names = []
+    # Set up dataset and dataloader with chunks created from exported raster
+    test_dataset = MBESDataset(test_path, ignore_files, using_hillshade=False, using_inpainted=True, resize_to_div_16=True)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0)
 
-    #read all the images using PIL 
-    for test_file in test_files:
-        image = Image.open(test_file)#np.load(test_file)
-        output_file_name = test_file.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
+    with torch.no_grad():
+        # Process each chunk individually
+        for i, data in enumerate(test_loader):
+            # Get image and create a "3 band" image
+            image1 = data['image'].type(torch.FloatTensor)
+            image = torch.hstack([image1, image1, image1])
+            image_file_path = data['metadata']['label_name'][0] # "Label" is the corresponding .tif file for metadata
+            output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
 
-        #convert colormap from jet to grayscale using plt 
-        # image = np.array(image)
-        # image = crop_center(image, 501, 501)
+            # Wrap in Variable
+            image_v = Variable(image, requires_grad=True)
+            
+            # If cuda is available, use it
+            if torch.cuda.is_available():
+                image_v = image_v.cuda()
+            else:
+                image_v = image_v.cpu()
+            
+            # Forward pass (only take relevant model output)
+            _, d1, _, _, _, _, _, _ = model(image_v)
 
-        #resize to 501x501 
-        image = image.resize((501, 501))
+            # Get predictions and normalize
+            pred = d1[:,0,:,:]
+            pred = normPRED(pred)
+            
+            # Undo the resize from the dataset
+            resize = transforms.Resize((chunk_size, chunk_size), interpolation=transforms.InterpolationMode.NEAREST)
+            pred = resize(pred)
 
-        og_image = np.array(image)
-        gray_image = np.dot(og_image[..., :3], [0.2989, 0.5870, 0.1140]) #TODO: What are these magic numbers
-        image = gray_image
-        #normalize the image using the mean and std 
-        image = (image - image.mean())/image.std()
-        #threshold anything beyond 3 stds
-        sanity = image > 3
-        image = torch.from_numpy(image).float().unsqueeze(0).unsqueeze(0)#.cuda()
+            # Save the non-thresholded image to npy array
+            pred_numpy = pred.detach().cpu().numpy()
+            pred_numpy_filename = os.path.splitext(output_file_name)[0] + ".npy"
+            np.save(pred_numpy_filename, pred_numpy)
 
-        #run the model on the image 
-        pred = model(image)
+            pred = pred.cpu().detach().numpy()
+            # Apply threshold
+            pred = (pred >= threshold).astype(np.int32)
+            pred = np.expand_dims(pred, axis=1)
+            pred = np.squeeze(pred)
+            
+            # Save output
+            plt.imsave(output_file_name, pred, cmap="jet")
+            copy_tiff_metadata(image_file_path, output_file_name)
 
-        # Save the non-thresholded image to npy array
-        pred_numpy = pred.detach().cpu().numpy()
-        pred_numpy_filename = os.path.splitext(output_file_name)[0] + ".npy"
-        np.save(pred_numpy_filename, pred_numpy)
-        output_numpy_file_names.append(pred_numpy_filename)
+            set_progress(20 + int((i * 60) // len(test_loader.dataset)))
 
-        pred = pred.argmax(dim=1)
-        pred = pred.cpu().detach().numpy()
-        pred = np.expand_dims(pred, axis=0)
-        pred = np.squeeze(pred)
+# UNet Inference Function
+def unet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, set_progress: callable = None, hillshade = True):
+    # Load model
+    if hillshade:
+        # FOR TWO CHANNEL INPUT
+        model = Unet(2, 2)
+    else:
+        # FOR ONE CHANNEL INPUT
+        model = Unet(1, 2)
+    model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
 
-        #create an array with the image and the prediction overlayed
-        # pred_mask = np.zeros((501, 501, 3))
-        # pred_mask[...,1] = pred
-        # overlay = np.zeros((501, 501))
-        # overlay = 0.8*og_image/255.0 + 0.2*pred_mask
-        # plt.imshow(pred_mask)
+    # If cuda is available, use it
+    if torch.cuda.is_available():
+        model.cuda()
+    else:
+        model.cpu()
+    model.eval()
 
-        #save the image to the same directory 
-        plt.imsave(output_file_name, pred, cmap="jet")
-        output_tiff_file_names.append(output_file_name)
-        
+    if hillshade:
+        # FOR TWO CHANNEL
+        dataset = MBESDataset(test_file_dir, ignore_files, using_hillshade=True, using_inpainted=True, cell_size=cell_size)
+    else:
+        # FOR ONE CHANNEL
+        dataset = MBESDataset(test_file_dir, ignore_files, using_hillshade=False, using_inpainted=True)
 
-    return output_tiff_file_names, output_numpy_file_names
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
+
+    with torch.no_grad():
+        for i, data in enumerate(dataloader):
+            # Get data and prep file paths
+            image = data['image']
+            # If cuda is available, use it
+            if torch.cuda.is_available():
+                image = image.cuda()
+            else:
+                image = image.cpu()
+            
+            image_file_path = data['metadata']['label_name'][0] # "Label" is the corresponding .tif file for metadata
+            output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
+
+            # Forward pass
+            pred = model(image)
+
+            # Undo the resize done by the dataset
+            resize = transforms.Resize((chunk_size, chunk_size), interpolation=transforms.InterpolationMode.NEAREST)
+            pred = resize(pred)
+
+            # Save the non-thresholded image to npy array
+            pred_numpy = pred.detach().cpu().numpy()
+            pred_numpy_filename = os.path.splitext(output_file_name)[0] + ".npy"
+            np.save(pred_numpy_filename, pred_numpy)
+
+            # Argmax to get class prediction
+            pred = pred.argmax(dim=1)
+            pred = pred.cpu().detach().numpy()
+            pred = np.expand_dims(pred, axis=0)
+            pred = np.squeeze(pred)
+
+            # Save tiff and copy metadata
+            plt.imsave(output_file_name, pred, cmap="jet")
+            copy_tiff_metadata(image_file_path, output_file_name)
+
+            set_progress(20 + int((i * 60) // len(dataloader.dataset)))
+
+# HRNet Inference Function
+def hrnet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, set_progress: callable = None):
+    # Set up model
+    a = argparse.Namespace(cfg='hrnet/config/hrnet_config.py',
+                                   local_rank=-1,
+                                   opts=[],
+                                   seed=304)
+    update_config(config, a)
+    model = get_seg_model(config)
+    model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
+
+    # If cuda is available, use it
+    if torch.cuda.is_available():
+        model.cuda()
+    else:
+        model.cpu()
+    model.eval()
+
+    dataset = MBESDataset(test_file_dir, ignore_files, using_hillshade=False, using_inpainted=True)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
+
+    with torch.no_grad():
+        for i, data in enumerate(dataloader):
+            image = data['image']
+
+            # If cuda is available, use it
+            if torch.cuda.is_available():
+                image = image.cuda()
+            else:
+                image = image.cpu()
+
+            image_file_path = data['metadata']['label_name'][0]
+            output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
+
+            # Forward pass and interpolate back up to size
+            pred = model(image)[0]
+            pred = F.interpolate(pred, size=image.shape[2:], mode='bilinear', align_corners=True)
+
+            # Save the non-thresholded image to npy array
+            pred_numpy = pred.detach().cpu().numpy()
+            pred_numpy_filename = os.path.splitext(output_file_name)[0] + ".npy"
+            np.save(pred_numpy_filename, pred_numpy)
+
+            # Argmax to get class predictions
+            pred = pred.argmax(dim=1)
+
+            # Undo the resize
+            resize = transforms.Resize((chunk_size, chunk_size), interpolation=transforms.InterpolationMode.NEAREST)
+            pred = resize(pred)
+            pred = pred.cpu().detach().numpy()
+            pred = np.squeeze(pred)
+
+            # Save tiff and copy metadata
+            plt.imsave(output_file_name, pred, cmap="jet")
+            copy_tiff_metadata(image_file_path, output_file_name)
+
+            set_progress(20 + int((i * 60) // len(dataloader.dataset)))
 
 def main(): 
     # train("./", 1000, 1e-4)

@@ -19,6 +19,12 @@
 | You should have received a copy of the GNU General Public License (COPYING.txt). If not see www.gnu.org/licenses.
 | ----------------------------------------------------------------------------------------------------------------------
 """
+from ..safe_libs_setup import setup_libs, safe_import_ml_libraries
+
+setup_libs()
+libs = safe_import_ml_libraries()
+
+
 import argparse
 from os.path import abspath, join, dirname
 

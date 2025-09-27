@@ -15,6 +15,12 @@
 ***************************************************************************
 """
 
+from ..safe_libs_setup import setup_libs, safe_import_ml_libraries
+
+setup_libs()
+libs = safe_import_ml_libraries()
+
+
 __author__ = 'Victor Olaya'
 __date__ = 'August 2012'
 __copyright__ = '(C) 2012, Victor Olaya'

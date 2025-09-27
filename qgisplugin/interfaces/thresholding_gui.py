@@ -19,6 +19,13 @@
 | You should have received a copy of the GNU General Public License (COPYING.txt). If not see www.gnu.org/licenses.
 | ----------------------------------------------------------------------------------------------------------------------
 """
+from ..safe_libs_setup import setup_libs, safe_import_ml_libraries
+
+setup_libs()
+libs = safe_import_ml_libraries()
+
+import os
+import sys
 import os.path as op
 import numpy as np
 import tempfile

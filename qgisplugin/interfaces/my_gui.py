@@ -19,13 +19,21 @@
 | You should have received a copy of the GNU General Public License (COPYING.txt). If not see www.gnu.org/licenses.
 | ----------------------------------------------------------------------------------------------------------------------
 """
+
+from ..safe_libs_setup import setup_libs, safe_import_ml_libraries
+
+setup_libs()
+libs = safe_import_ml_libraries()
+
 import os.path as op
 import numpy as np
 import tempfile
 
 from osgeo import gdal
 from qgis.gui import QgsFileWidget, QgsMapLayerComboBox
-from qgis.core import Qgis, QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer, QgsProject, QgsReferencedRectangle
+from qgis.core import (Qgis, QgsProviderRegistry, QgsMapLayerProxyModel,
+                       QgsRasterLayer, QgsProject, QgsReferencedRectangle,
+                       QgsVectorLayer, QgsMarkerSymbol)
 
 from qgis.utils import iface
 from qgis.PyQt.uic import loadUi
@@ -37,11 +45,11 @@ from qgis.PyQt.QtWidgets import (
     QDialog,
     QVBoxLayout,
     QDialogButtonBox,
-    QLabel
+    QLabel,
+    QComboBox
 )
 from qgis.PyQt.QtCore import QCoreApplication, pyqtSignal
 from qgis.PyQt.QtGui import QCursor
-
 
 from qgisplugin.core.ship_seeker import ShipSeeker
 from qgisplugin.interfaces import import_image, write_image
@@ -79,8 +87,6 @@ class MyWidget(QDialog):
         super(MyWidget, self).__init__()
         loadUi(op.join(op.dirname(__file__), 'my_gui.ui'), self)
 
-        # todo: link widgets to code in your __init__ function
-
         if iface is not None:
             canvas = iface.mapCanvas()
             self.prevMapTool = canvas.mapTool()
@@ -99,6 +105,9 @@ class MyWidget(QDialog):
         self.imageButton.setDefaultAction(self.imageAction)
 
         self.extentButton.clicked.connect(self.selectExtent)
+
+        # other parameters
+        # self.percentageSlider.valueChanged.connect(self.updateSliderPercent)
 
         # output
         self.outputFileWidget.lineEdit().setReadOnly(True)
@@ -167,10 +176,17 @@ class MyWidget(QDialog):
     def useCanvasExtent(self):
         self.setExtentValueFromRect(QgsReferencedRectangle(iface.mapCanvas().extent(), 
                                                            iface.mapCanvas().mapSettings().destinationCrs()))
-        
+
+    def useCurrentLayerExtent(self):
+        layer = self.imageDropDown.currentLayer()
+        self.setExtentValueFromRect(QgsReferencedRectangle(layer.extent(), layer.crs()))
+
     def updateExtent(self):
         r = self.tool.rectangle()
         self.setExtentValueFromRect(r)
+
+    # def updateSliderPercent(self, value):
+    #     self.percentageSliderValue.setText(f"{value}%")
 
     def selectExtent(self):
         popupmenu = QMenu()
@@ -181,16 +197,21 @@ class MyWidget(QDialog):
         useLayerExtentAction = QAction(
             QCoreApplication.translate("ExtentSelectionPanel", 'Use Layer Extent…'),
             self.extentButton)
+        useCurrentLayerExtentAction = QAction(
+            QCoreApplication.translate("ExtentSelectionPanel", "Use Current Layer"),
+            self.extentButton)
         selectOnCanvasAction = QAction(
             self.tr('Select Extent on Canvas'), self.extentButton)
         
         popupmenu.addAction(useCanvasExtentAction)
         popupmenu.addAction(useLayerExtentAction)
+        popupmenu.addAction(useCurrentLayerExtentAction)
         popupmenu.addSeparator()
         popupmenu.addAction(selectOnCanvasAction)
 
         selectOnCanvasAction.triggered.connect(self.selectOnCanvas)
         useLayerExtentAction.triggered.connect(self.useLayerExtent)
+        useCurrentLayerExtentAction.triggered.connect(self.useCurrentLayerExtent)
         useCanvasExtentAction.triggered.connect(self.useCanvasExtent)
 
         popupmenu.exec(QCursor.pos())
@@ -203,7 +224,6 @@ class MyWidget(QDialog):
 
     def _browse_for_image(self):
         """ Browse for an image raster file. """
-
         path = QFileDialog.getOpenFileName(filter=QgsProviderRegistry.instance().fileRasterFilters())[0]
 
         try:
@@ -214,9 +234,6 @@ class MyWidget(QDialog):
                 QgsProject.instance().addMapLayer(layer, True)
 
                 self.imageDropDown.setLayer(layer)
-
-        # except AssertionError:
-        #     self.log("'" + path + "' not recognized as a supported file format.")
         except Exception as e:
             self.log(e)
             raise e
@@ -231,9 +248,6 @@ class MyWidget(QDialog):
 
     def _run(self):
         """ Read all parameters and pass them on to the core function. """
-
-        # todo: read all parameters, throw errors when needed, give user feedback and run code
-
         try:
             # Only temp file possible when result is opened in QGIS
             output_path = self.outputFileWidget.filePath()
@@ -244,28 +258,33 @@ class MyWidget(QDialog):
             # Get parameters
             raster_layer = self.imageDropDown.currentLayer()
 
-            # image_path = self.imageDropDown.currentLayer().source()
-            # image, metadata = import_image(image_path)
-
             extent_str = self.extentText.text()
 
+            model_arch = self.findChild(QComboBox, "modelDropdown").currentText()
+
+            contour_thresh = self.constantSpinBox.value()
+            basnet_saliency_thresh = self.constantSpinBox_2.value()
             # run code
             result = ShipSeeker(raster_layer=raster_layer, extent_str=extent_str)\
-                .execute(output_path, save_model_output=self.savePredictionCheckBox.isChecked(), \
-                         set_progress=self.progressBar.setValue, log=self.log)
+                .execute(output_path, save_model_output=self.savePredictionCheckBox.isChecked(), model_arch=model_arch, \
+                         contour_thresh=contour_thresh, basnet_thresh=basnet_saliency_thresh, set_progress=self.progressBar.setValue, log=self.log)
 
             self.progressBar.setValue(100)
 
-            # write image to file
-            print("THe output path will be: ", output_path)
-
             # Open result in QGIS
             if self.openCheckBox.isChecked():
-                output_raster_layer = QgsRasterLayer(output_path, 'New Image')
+                output_name = output_path.split('/')[-1][:-4]
+                # output_raster_layer = QgsRasterLayer(output_path, 'New Image')
+                output_raster_layer = QgsRasterLayer(output_path, output_name)
                 QgsProject.instance().addMapLayer(output_raster_layer, True)
-
-        # except AttributeError:
-        #     self.log("Please select an image.")
+                
+                # Add the csv showing wreck locations
+                output_csv = output_path.replace(".tif", "_shiplocations.csv")
+                csv_uri = f"file:///{output_csv}?delimiter=,&xField=x&yField=y"
+                csv_name = output_csv.split('/')[-1][:-4]
+                csv_layer = QgsVectorLayer(csv_uri, csv_name, "delimitedtext")
+                csv_layer.setCrs(output_raster_layer.crs())
+                QgsProject.instance().addMapLayer(csv_layer, True)
         except Exception as e:
             self.log(e)
             raise e

@@ -1,3 +1,9 @@
+from ..safe_libs_setup import setup_libs, safe_import_ml_libraries
+
+setup_libs()
+libs = safe_import_ml_libraries()
+
+
 import torch 
 
 from models import *
@@ -8,7 +14,6 @@ from PIL import Image
 from matplotlib import pyplot as plt
 import wandb
 import numpy as np
-import os 
 import glob 
 
 from smooth_tiled_predictions import predict_img_with_smooth_windowing

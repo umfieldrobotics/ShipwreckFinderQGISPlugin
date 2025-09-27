@@ -3,6 +3,11 @@
  This script initializes the plugin, making it known to QGIS.
 """
 
+from .safe_libs_setup import setup_libs, safe_import_ml_libraries
+
+setup_libs()
+libs = safe_import_ml_libraries()
+
 
 # noinspection PyPep8Naming
 def classFactory(iface):

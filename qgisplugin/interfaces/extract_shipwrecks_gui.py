@@ -19,19 +19,29 @@
 | You should have received a copy of the GNU General Public License (COPYING.txt). If not see www.gnu.org/licenses.
 | ----------------------------------------------------------------------------------------------------------------------
 """
+from ..safe_libs_setup import setup_libs, safe_import_ml_libraries
+
+setup_libs()
+libs = safe_import_ml_libraries()
+
+
 import os.path as op
 import numpy as np
 import tempfile
 
 from osgeo import gdal, osr
-from qgis.gui import QgsFileWidget, QgsMapLayerComboBox
-from qgis.core import Qgis, QgsProviderRegistry, QgsMapLayerProxyModel, QgsRasterLayer,QgsVectorLayer, QgsProject, QgsReferencedRectangle, QgsSymbol, QgsFillSymbol, QgsRendererCategory, QgsCategorizedSymbolRenderer
+from qgis.gui import QgsFileWidget
+from qgis.core import (Qgis, QgsProviderRegistry, QgsMapLayerProxyModel,
+                       QgsRasterLayer,QgsVectorLayer, QgsProject,
+                       QgsSymbol, QgsField, QgsFields,
+                       QgsFeature, QgsGeometry, QgsPointXY,
+                       QgsVectorFileWriter, QgsCoordinateReferenceSystem, QgsWkbTypes)
 
 from qgis.utils import iface
 from qgis.PyQt.uic import loadUi
 from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QDialogButtonBox
 
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import Qt, QVariant
 
 from qgis.PyQt.QtWidgets import (
     QDialog,
@@ -44,6 +54,7 @@ from qgisplugin.core.tiff_utils import copy_tiff_metadata
 from qgisplugin.core.extract_bb import BoundingBoxExtractor
 
 import fiona
+from fiona.crs import from_epsg
 from shapely.geometry import Polygon, mapping
 
 import matplotlib.pyplot as plt
@@ -77,19 +88,14 @@ class ExtractBoxesWidget(QDialog):
         self.OKClose.accepted.connect(self._run)
         self.OKClose.rejected.connect(self.close)
 
-        
-
-
     def log(self, text):
         # append text to log window
         self.logBrowser.append(str(text) + '\n')
         # open the widget on the log screen
         self.tabWidget.setCurrentIndex(self.tabWidget.indexOf(self.tab_log))
 
-
     def _browse_for_image(self):
         """ Browse for an image raster file. """
-
         path = QFileDialog.getOpenFileName(filter=QgsProviderRegistry.instance().fileRasterFilters())[0]
 
         try:
@@ -104,16 +110,12 @@ class ExtractBoxesWidget(QDialog):
 
                 pixmap = QPixmap(path)
                 self.imageLabel.setPixmap(pixmap.scaled(self.imageLabel.size(), aspectRatioMode=Qt.KeepAspectRatio))
-
-        # except AssertionError:
-        #     self.log("'" + path + "' not recognized as a supported file format.")
         except Exception as e:
             self.log(e)
             raise e
 
     def _choose_image(self):
         """ When the user browsers for an image """
-
         layer = self.imageDropDown.currentLayer()
 
         if layer is None:
@@ -137,44 +139,72 @@ class ExtractBoxesWidget(QDialog):
         return array_3d
     
     def export_shape_file(self, bounding_boxes_coords, crs_epsg, output_path):
-        schema = {
-            'geometry': 'Polygon',
-            'properties': {'id': 'int'}
-        }
-
-        with fiona.open(output_path, 'w', driver='ESRI Shapefile', schema=schema, crs=f'epsg:{crs_epsg}') as shp:
-            for i, coords in enumerate(bounding_boxes_coords):       
-                polygon = Polygon(coords)
-                shp.write({
-                    'geometry': mapping(polygon),
-                    'properties': {'id': i}
-                })
-
-        ## Export to vecor layer
+        # Define the fields for the shapefile
+        fields = QgsFields()
+        fields.append(QgsField("id", QVariant.Int))
+        fields.append(QgsField("bbox_id", QVariant.String))
+        
+        # Create coordinate reference system
+        crs = QgsCoordinateReferenceSystem(f"EPSG:{crs_epsg}")
+        
+        # Set up the vector file writer
+        writer = QgsVectorFileWriter(
+            output_path,
+            "UTF-8",
+            fields,
+            QgsWkbTypes.Polygon,
+            crs,
+            "ESRI Shapefile"
+        )
+                
+        # Process each bounding box
+        for idx, bbox_coords in enumerate(bounding_boxes_coords):
+            # Check if first and last points are the same
+            coords_list = list(bbox_coords)
+            if len(coords_list) > 0 and coords_list[0] != coords_list[-1]:
+                coords_list.append(coords_list[0]) # Close the polygon
+            
+            # Convert coordinates to QgsPointXY objects
+            qgs_points = [QgsPointXY(float(x), float(y)) for x, y in coords_list]
+            
+            # Create polygon geometry
+            polygon_geom = QgsGeometry.fromPolygonXY([qgs_points])
+            
+            # Create feature
+            feature = QgsFeature()
+            feature.setGeometry(polygon_geom)
+            feature.setAttributes([idx + 1, f"bbox_{idx + 1}"])
+            
+            # Add feature to the writer
+            writer.addFeature(feature)
+        
+        # Delete the writer to ensure all data is written
+        del writer
+                
+        ## Export to vector layer
         if self.openCheckBox.isChecked():
             output_shapefile_layer = QgsVectorLayer(output_path, 'Bounding Boxes', 'ogr')
+                
             QgsProject.instance().addMapLayer(output_shapefile_layer, True)
 
             symbol = QgsSymbol.defaultSymbol(output_shapefile_layer.geometryType())
         
             # Set the color with transparency (e.g., 50% transparent red)
-            color = QColor(255, 0, 0, 128)  # Red with 50% transparency
+            color = QColor(255, 0, 0, 128) # Red with 50% transparency
             symbol.setColor(color)
             
             # Apply the symbol to the layer's renderer
             output_shapefile_layer.renderer().setSymbol(symbol)
-            
+
             # Refresh the layer to see the changes
             output_shapefile_layer.triggerRepaint()
 
     def _run(self):
         """ Read all parameters and pass them on to the core function. """
-
         raster_layer = self.imageDropDown.currentLayer()
         raster_path = raster_layer.dataProvider().dataSourceUri()
         output_path = self.outputFileWidget.filePath()
 
-        
         # Parse the image of tiff
         self.progressBar.setValue(10)
         url = raster_path.split('|')[0]
@@ -187,12 +217,11 @@ class ExtractBoxesWidget(QDialog):
 
         np_segmentation_image = self.raster_to_numpy(raster_ds)
 
-
         # Get the CRS of the TIFF
         projection = raster_ds.GetProjection()
         spatial_ref = osr.SpatialReference()
         spatial_ref.ImportFromWkt(projection)
-        crs_epsg = spatial_ref.GetAttrValue('AUTHORITY', 1)  # EPSG code
+        crs_epsg = spatial_ref.GetAttrValue('AUTHORITY', 1) # EPSG code
         geotransform = raster_ds.GetGeoTransform()
 
         self.progressBar.setValue(20)
@@ -222,7 +251,6 @@ def _run():
     z.show()
 
     app.exec_()
-
 
 if __name__ == '__main__':
     _run()

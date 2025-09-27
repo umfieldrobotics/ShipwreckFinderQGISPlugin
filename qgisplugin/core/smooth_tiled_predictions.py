@@ -8,6 +8,10 @@
 
 """Do smooth predictions on an image from tiled prediction patches."""
 
+from ..safe_libs_setup import setup_libs, safe_import_ml_libraries
+
+setup_libs()
+libs = safe_import_ml_libraries()
 
 import numpy as np
 import scipy.signal
