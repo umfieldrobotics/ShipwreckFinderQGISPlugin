@@ -1,15 +1,7 @@
-import os
-import sys
-def setup_libs():
-    current_dir = os.path.dirname(__file__)
-    while current_dir != os.path.dirname(current_dir):
-        if os.path.exists(os.path.join(current_dir, 'libs')):
-            libs_dir = os.path.join(current_dir, 'libs')
-            if libs_dir not in sys.path:
-                sys.path.insert(0, libs_dir)
-            return
-        current_dir = os.path.dirname(current_dir)
+from ..safe_libs_setup import setup_libs, safe_import_ml_libraries
+
 setup_libs()
+libs = safe_import_ml_libraries()
 
 import cv2
 import numpy as np
@@ -18,7 +10,8 @@ import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
 import rasterio
-
+import os
+import sys
 
 def normalize_nonzero(image):
     """
@@ -30,7 +23,7 @@ def normalize_nonzero(image):
     Returns:
         torch.Tensor or np.ndarray: Normalized image with nonzero values scaled to [0,1].
     """
-    is_tensor = isinstance(image, torch.Tensor)
+    is_tensor = isinstance(image, torch.Tensor) # Ensure this works on tensors only
     
     if not (is_tensor or isinstance(image, np.ndarray)):
         raise TypeError("Input must be a PyTorch tensor or a NumPy array.")
@@ -60,20 +53,20 @@ class MBESDataset(Dataset):
         self.root_dir = root_dir
         self.transform = transform
         self.byt = byt
-        self.aug_multiplier = aug_multiplier  # Number of additional augmented samples per image
-        self.img_size = 400
+        self.aug_multiplier = aug_multiplier # Number of additional augmented samples per image
+        self.img_size = 400 # Images will be resized for consistency when running through models
         
         self.using_hillshade = using_hillshade
         self.using_inpainted = using_inpainted
         self.cell_size = cell_size
 
+        # Handle resizing
         self.resize_dim = ((self.img_size // 32) + 1) * 32  if resize_to_div_16 else self.img_size
         self.resize = transforms.Resize((self.resize_dim, self.resize_dim), interpolation=transforms.InterpolationMode.NEAREST)
       
         self.expanded_file_list = [(os.path.join(self.root_dir, file_name), 0) for file_name in os.listdir(self.root_dir) \
                                     if ".npy" in file_name and os.path.join(self.root_dir, file_name) not in ignore_files]
 
-        
 
     def __len__(self):
         return len(self.expanded_file_list)
@@ -84,8 +77,6 @@ class MBESDataset(Dataset):
         label_name = os.path.splitext(file_name)[0] + ".tif" # "Label" is the original chunk tif used for metadata
 
         og_image = np.load(image_name)
-       
-
         if self.using_inpainted: # Compute inpainted image
             if og_image.ndim == 3:
                 og_image = og_image[0] # Take first channel
@@ -93,7 +84,7 @@ class MBESDataset(Dataset):
             og_image = cv2.inpaint(og_image.astype(np.float32), inpaint_mask, inpaintRadius=8, flags=cv2.INPAINT_NS)
 
         
-        # Create hillshade from og image before it becomes a tensor
+        # Create hillshade from the original image before it becomes a tensor
         if self.using_hillshade:
             hillshade = self.compute_hillshade(og_image, cell_size=self.cell_size)
             hillshade = torch.from_numpy(hillshade).float().unsqueeze(0) # (1, H, W)
@@ -117,7 +108,7 @@ class MBESDataset(Dataset):
         # Temporarily turn -1 → 255 for Albumentations
         label[label == -1] = 255
 
-        # --- Optional hillshade ---
+        # Optional hillshading
         if self.using_hillshade:
             image = torch.cat([image, hillshade], dim=0)  # (2, H, W)
 

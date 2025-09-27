@@ -3,17 +3,10 @@
 import os
 import sys
 
-def setup_libs():
-    current_dir = os.path.dirname(__file__)
-    while current_dir != os.path.dirname(current_dir):
-        if os.path.exists(os.path.join(current_dir, 'libs')):
-            libs_dir = os.path.join(current_dir, 'libs')
-            if libs_dir not in sys.path:
-                sys.path.insert(0, libs_dir)
-            return
-        current_dir = os.path.dirname(current_dir)
-setup_libs()
+from ..safe_libs_setup import setup_libs, safe_import_ml_libraries
 
+setup_libs()
+libs = safe_import_ml_libraries()
 
 import glob
 import numpy as np
@@ -72,12 +65,13 @@ class ShipSeeker:
         xmin, xmax, ymin, ymax = map(float, extent_str.split(','))
         src_crs = projection_str.strip('[]')
         
+        # Open the image
         input_ds = gdal.Open(image_path, gdalconst.GA_ReadOnly)
-
+        # Get the projection
         proj = osr.SpatialReference(wkt=input_ds.GetProjection())
-        proj.AutoIdentifyEPSG()
+        proj.AutoIdentifyEPSG() # Get correct CRS
         epsg_id = proj.GetAttrValue('AUTHORITY',1)
-
+        # Crop the image
         gdal_translate_options = gdal.TranslateOptions(
                                     projWin=[xmin, ymax, xmax, ymin],
                                     projWinSRS=src_crs,
@@ -89,7 +83,8 @@ class ShipSeeker:
     #TODO: do this
     def __init__(self, raster_layer, extent_str):
         """
-        todo: describe your variables
+        raster_layer: Input raster layer object
+        extent_str: String representation of the area of interest extent
         """
         self.raster_layer = raster_layer
         self.extent_str = extent_str
@@ -98,7 +93,7 @@ class ShipSeeker:
         self.temp_dir = os.path.join("/tmp", "SHIPWRECK_SEEKER", "temp_chunks")
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
-
+        # Prep temporary directories to store intermediate files
         os.makedirs(self.temp_dir, exist_ok=False)
 
     def __del__(self):
@@ -118,7 +113,7 @@ class ShipSeeker:
         geotiff_path = os.path.join(self.temp_dir, "exported_geotiff.tif")
         export_raster_as_geotiff(self.raster_layer, geotiff_path)
         set_progress(5)
-
+        # Get the raster resolution
         res_x, res_y = get_raster_resolution(geotiff_path)
 
         #Crop the image using the extent
@@ -135,7 +130,7 @@ class ShipSeeker:
         # Create chunks of size (200m, 200m) depending on input resolution
         chunk_size = int(200 / abs(res_x))
         rows, cols = create_chunks(cropped_path, self.temp_dir, chunk_size)
-
+        # Create list of files to ignore in folder
         ignore_images = [cropped_path, geotiff_path]
         input_files = glob.glob(os.path.join(self.temp_dir, "*"))
 
@@ -169,24 +164,27 @@ class ShipSeeker:
         # Merge the chunks
         merge_chunks(self.temp_dir, rows, cols, output_path, save_model_output, is_basnet)
 
-
         set_progress(85)
         # Crop back to original size, maintaining geospatial information
         crop_tiff(output_path, output_path, width, height)
 
         set_progress(90)
 
+        # Merge transparent parts of output and input
         merge_transparent_parts(cropped_path, output_path, output_path)
 
+        # Remove any predictions made outside of the raster layer (caused by chunking)
         invalid_pixels = robust_remove_invalid_pixels(cropped_path, output_path, output_path)
 
         # Remove small contours
         contour_threshold = contour_thresh # 0.0006 # ------------- THIS IS THE ADJUSTABLE THRESHOLD THAT WILL BECOME A PARAMETER
         remove_small_contours_chunked(output_path, output_path, contour_threshold, invalid_pixels)
-
+        
+        # Copy metadata to new raster layer
         copy_tiff_metadata(cropped_path, output_path)
         set_progress(95)
-
+        
+        # Create csv with points for every contour
         output_csv = output_path.replace(".tif", "_shiplocations.csv")
         generate_csv(output_path, output_csv)
 

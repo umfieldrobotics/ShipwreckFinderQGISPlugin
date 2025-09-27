@@ -1,20 +1,11 @@
-import os
-import sys
-def setup_libs():
-    current_dir = os.path.dirname(__file__)
-    while current_dir != os.path.dirname(current_dir):
-        if os.path.exists(os.path.join(current_dir, 'libs')):
-            libs_dir = os.path.join(current_dir, 'libs')
-            if libs_dir not in sys.path:
-                sys.path.insert(0, libs_dir)
-            return
-        current_dir = os.path.dirname(current_dir)
+from ..safe_libs_setup import setup_libs, safe_import_ml_libraries
+
 setup_libs()
+libs = safe_import_ml_libraries()
 
-
+import os
 import torch 
 import cv2
-
 from qgisplugin.core.models import *
 from tqdm import tqdm 
 from torch.utils.data import Dataset, DataLoader
@@ -141,43 +132,51 @@ def crop_center(image, crop_height=512, crop_width=512):
     start_x = (width - crop_width) // 2
     return image[start_y:start_y + crop_height, start_x:start_x + crop_width]
 
-# BASNET TEST FUNCTION
+# BASNet Inference Function
 def basnet_test(test_path, ignore_files, weight_path, chunk_size, cell_size, thresh=0.1, set_progress: callable=None):
     threshold = thresh
 
-    # Load and prep the model
+    # Load the model
     model = BASNet(3, 1)
     model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
+
+    # If cuda is available, use it
     if torch.cuda.is_available():
         model.cuda()
     else:
         model.cpu()
     model.eval()
 
+    # Set up dataset and dataloader with chunks created from exported raster
     test_dataset = MBESDataset(test_path, ignore_files, using_hillshade=False, using_inpainted=True, resize_to_div_16=True)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0)
 
     with torch.no_grad():
+        # Process each chunk individually
         for i, data in enumerate(test_loader):
+            # Get image and create a "3 band" image
             image1 = data['image'].type(torch.FloatTensor)
             image = torch.hstack([image1, image1, image1])
             image_file_path = data['metadata']['label_name'][0] # "Label" is the corresponding .tif file for metadata
             output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
 
-            
+            # Wrap in Variable
             image_v = Variable(image, requires_grad=True)
-
+            
+            # If cuda is available, use it
             if torch.cuda.is_available():
                 image_v = image_v.cuda()
             else:
                 image_v = image_v.cpu()
-
+            
+            # Forward pass (only take relevant model output)
             _, d1, _, _, _, _, _, _ = model(image_v)
 
+            # Get predictions and normalize
             pred = d1[:,0,:,:]
             pred = normPRED(pred)
             
-            # Undo the resize
+            # Undo the resize from the dataset
             resize = transforms.Resize((chunk_size, chunk_size), interpolation=transforms.InterpolationMode.NEAREST)
             pred = resize(pred)
 
@@ -187,26 +186,29 @@ def basnet_test(test_path, ignore_files, weight_path, chunk_size, cell_size, thr
             np.save(pred_numpy_filename, pred_numpy)
 
             pred = pred.cpu().detach().numpy()
-
+            # Apply threshold
             pred = (pred >= threshold).astype(np.int32)
             pred = np.expand_dims(pred, axis=1)
             pred = np.squeeze(pred)
             
+            # Save output
             plt.imsave(output_file_name, pred, cmap="jet")
             copy_tiff_metadata(image_file_path, output_file_name)
 
             set_progress(20 + int((i * 60) // len(test_loader.dataset)))
 
-# UNET TEST FUNCTION
+# UNet Inference Function
 def unet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, set_progress: callable = None, hillshade = True):
+    # Load model
     if hillshade:
         # FOR TWO CHANNEL INPUT
         model = Unet(2, 2)
     else:
         # FOR ONE CHANNEL INPUT
         model = Unet(1, 2)
-    
     model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
+
+    # If cuda is available, use it
     if torch.cuda.is_available():
         model.cuda()
     else:
@@ -226,20 +228,19 @@ def unet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, s
         for i, data in enumerate(dataloader):
             # Get data and prep file paths
             image = data['image']
-
+            # If cuda is available, use it
             if torch.cuda.is_available():
                 image = image.cuda()
             else:
                 image = image.cpu()
             
             image_file_path = data['metadata']['label_name'][0] # "Label" is the corresponding .tif file for metadata
-
             output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
 
-            # Run through model
+            # Forward pass
             pred = model(image)
 
-            # Undo the resize
+            # Undo the resize done by the dataset
             resize = transforms.Resize((chunk_size, chunk_size), interpolation=transforms.InterpolationMode.NEAREST)
             pred = resize(pred)
 
@@ -248,6 +249,7 @@ def unet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, s
             pred_numpy_filename = os.path.splitext(output_file_name)[0] + ".npy"
             np.save(pred_numpy_filename, pred_numpy)
 
+            # Argmax to get class prediction
             pred = pred.argmax(dim=1)
             pred = pred.cpu().detach().numpy()
             pred = np.expand_dims(pred, axis=0)
@@ -259,17 +261,18 @@ def unet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, s
 
             set_progress(20 + int((i * 60) // len(dataloader.dataset)))
 
-# HRNET TEST FUNCTION
+# HRNet Inference Function
 def hrnet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, set_progress: callable = None):
+    # Set up model
     a = argparse.Namespace(cfg='hrnet/config/hrnet_config.py',
                                    local_rank=-1,
                                    opts=[],
                                    seed=304)
     update_config(config, a)
-
     model = get_seg_model(config)
-
     model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu')))
+
+    # If cuda is available, use it
     if torch.cuda.is_available():
         model.cuda()
     else:
@@ -283,6 +286,7 @@ def hrnet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, 
         for i, data in enumerate(dataloader):
             image = data['image']
 
+            # If cuda is available, use it
             if torch.cuda.is_available():
                 image = image.cuda()
             else:
@@ -291,8 +295,8 @@ def hrnet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, 
             image_file_path = data['metadata']['label_name'][0]
             output_file_name = image_file_path.replace(".tiff", ".tif").replace(".tif", "_pred.tiff")
 
+            # Forward pass and interpolate back up to size
             pred = model(image)[0]
-            # print(f"Pred shape before interpolate: {pred.shape}")
             pred = F.interpolate(pred, size=image.shape[2:], mode='bilinear', align_corners=True)
 
             # Save the non-thresholded image to npy array
@@ -300,12 +304,12 @@ def hrnet_test(test_file_dir, ignore_files, weight_path, chunk_size, cell_size, 
             pred_numpy_filename = os.path.splitext(output_file_name)[0] + ".npy"
             np.save(pred_numpy_filename, pred_numpy)
 
+            # Argmax to get class predictions
             pred = pred.argmax(dim=1)
 
             # Undo the resize
             resize = transforms.Resize((chunk_size, chunk_size), interpolation=transforms.InterpolationMode.NEAREST)
             pred = resize(pred)
-
             pred = pred.cpu().detach().numpy()
             pred = np.squeeze(pred)
 

@@ -1,21 +1,15 @@
-import os
-import sys
-def setup_libs():
-    current_dir = os.path.dirname(__file__)
-    while current_dir != os.path.dirname(current_dir):
-        if os.path.exists(os.path.join(current_dir, 'libs')):
-            libs_dir = os.path.join(current_dir, 'libs')
-            if libs_dir not in sys.path:
-                sys.path.insert(0, libs_dir)
-            return
-        current_dir = os.path.dirname(current_dir)
+from ..safe_libs_setup import setup_libs, safe_import_ml_libraries
+
 setup_libs()
+libs = safe_import_ml_libraries()
 
 import math
 import numpy as np
 import cv2
 import rasterio
 import csv
+import os
+
 
 from osgeo import gdal, gdalconst, gdal_array
 from qgisplugin.core.data import normalize_nonzero
@@ -31,32 +25,24 @@ def crop_tiff(input_tiff, output_tiff, width, height, start_x=0, start_y=0):
     if dataset is None:
         raise ValueError("Unable to open input TIFF file.")
     
+    # Get number of bands
     num_bands = dataset.RasterCount
-    
     
     # Get the geo-transform and projection
     geotransform = dataset.GetGeoTransform()
-    
     projection = dataset.GetProjection()
     
     
     # Create a new dataset for the cropped image
     driver = gdal.GetDriverByName('GTiff')
-    
     out_dataset = driver.Create(output_tiff, width, height, num_bands, dataset.GetRasterBand(1).DataType)
-    
     
     # Set the geo-transform and projection
     new_geotransform = list(geotransform)
-    
     new_geotransform[0] += start_x * geotransform[1] + start_y * geotransform[2]
-    
     new_geotransform[3] += start_x * geotransform[4] + start_y * geotransform[5]
-    
     out_dataset.SetGeoTransform(new_geotransform)
-    
     out_dataset.SetProjection(projection)
-    
 
     # Read and write data for each band
     for band_num in range(1, num_bands + 1):
@@ -65,12 +51,10 @@ def crop_tiff(input_tiff, output_tiff, width, height, start_x=0, start_y=0):
         out_band = out_dataset.GetRasterBand(band_num)
 
         cropped_array = band.ReadAsArray(start_x, start_y, width, height)
-
         out_band.WriteArray(cropped_array)
     
     # Flush and close the datasets
     out_band.FlushCache()
-    
     out_dataset.FlushCache()
     
     del dataset
@@ -157,21 +141,24 @@ def merge_chunks(output_dir, rows, cols, output_path, save_model_output, is_basn
     # Merge the tiff files
     chunk_tiff_files = [os.path.join(output_dir, f) for f in os.listdir(output_dir) if "_pred.tiff" in f]
 
-
+    # If a large number of chunks exist, merge them in a memory-efficient way
     if len(chunk_tiff_files) <= 50:
         gdal_merge_cmd = f"gdal_merge.py -o {output_path} " + " ".join(chunk_tiff_files)
         os.system(gdal_merge_cmd)
     else:
         robust_gdal_merge(chunk_tiff_files, output_path)
 
+    # If npy files are requested, merge them (BASNet is not compatible with this)
     if save_model_output and not is_basnet:
         # Merge the npy files
         chunk_npy_files = [os.path.join(output_dir, f) for f in os.listdir(output_dir) if "_pred.npy" in f]
         chunk_shape = np.load(chunk_npy_files[0]).shape
 
+        # Determine final image shape and create blank array
         final_image_shape = (chunk_shape[0], chunk_shape[1], rows*chunk_shape[2], cols*chunk_shape[3])  # rows, cols
         final_image = np.zeros(final_image_shape)
-
+        
+        # Place chunks
         for r in range(rows):
             for c in range(cols):
                 chunk_file_name = [filename for filename in chunk_npy_files if f'{c}_{r}_pred.npy' in filename][0]
@@ -180,7 +167,7 @@ def merge_chunks(output_dir, rows, cols, output_path, save_model_output, is_basn
                 start_row = chunk_shape[2]*r
                 start_col = chunk_shape[3]*c
                 final_image[:, :, start_row:start_row+chunk_shape[2], start_col:start_col+chunk_shape[3]] = chunk_arr
-        
+        # Save output
         npy_output_path = os.path.splitext(output_path)[0] + ".npy"
         np.save(npy_output_path, final_image)
 
@@ -220,42 +207,48 @@ def merge_transparent_parts(image1_path, image2_path, output_path):
     from rasterio.windows import Window
 
     with rasterio.open(image1_path) as src1, rasterio.open(image2_path) as src2:
+        # Ensure both images have the same dimensions
         if src1.width != src2.width or src1.height != src2.height:
             raise ValueError("Both images must be the same size")
 
+        # Use image2's profile as base, update to 4-band RGBA
         profile = src2.profile
         profile.update({
             "count": 4,
             "dtype": src2.dtypes[0]
         })
 
-        block_size = 512
+        block_size = 512 # Process image in memory-efficient blocks
 
         with rasterio.open(output_path, 'w', **profile) as dst:
+            # Iterate over image blocks
             for y in range(0, src1.height, block_size):
                 for x in range(0, src1.width, block_size):
+                    # Define window boundaries for this block
                     window_width = min(block_size, src1.width - x)
                     window_height = min(block_size, src1.height - y)
                     window = Window(x, y, window_width, window_height)
 
+                    # Read data from both images for this block
                     image1 = src1.read(window=window)
                     image2 = src2.read(window=window)
 
-                    if src1.count == 2:
+                    # Determine transparency mask from image1
+                    if src1.count == 2: # single band + alpha
                         alpha1 = image1[1]
                         transparent_mask = (alpha1 == 0)
-                    elif src1.count == 1:
+                    elif src1.count == 1: # no alpha channel (nothing transparent)
                         transparent_mask = np.zeros((window_height, window_width), dtype=bool)
                     else:
                         raise ValueError("Image1 must have 1 or 2 bands")
 
-                    # Merge
+                    # Merge image1 into image2 at transparent locations
                     for b in range(4):
                         if b < 3:
                             image2[b][transparent_mask] = image1[0][transparent_mask]
                         else:
                             image2[b][transparent_mask] = 0
-
+                    # Write output
                     dst.write(image2, window=window)
 
 
@@ -305,21 +298,20 @@ def linear_interpolate_transparent(input_tiff_path, output_tiff_path):
 def copy_tiff_metadata(input_file_path, output_file_path):
     '''Copies GeoTiff metadata from input_file_path to output_file_path'''
 
+    # Open input and output
     tif_with_RPCs = gdal.Open(input_file_path, gdalconst.GA_ReadOnly)
-
     tif_without_RPCs = gdal.Open(output_file_path,gdalconst.GA_Update)
-
+    
+    # Get and set geotransforms and projections
     geo_trans = tif_with_RPCs.GetGeoTransform()
-
     tif_without_RPCs.SetGeoTransform(geo_trans)
-
     tif_without_RPCs.SetProjection(tif_with_RPCs.GetProjection())
 
+    # Copy over metadata
     rpcs = tif_with_RPCs.GetMetadata('RPC')
-
     tif_without_RPCs.SetMetadata(rpcs ,'RPC')
 
-
+    # Clean up datasets
     del(tif_with_RPCs)
     del(tif_without_RPCs)
 
@@ -327,18 +319,21 @@ def copy_tiff_metadata(input_file_path, output_file_path):
 def ensure_valid_nodata(cropped_path, output_path):
     with rasterio.open(cropped_path) as src:
         profile = src.profile
+        # Read all bands and get origina nodata value
         cropped = src.read()
-        # cropped[0] is the band we care about
         crop_nodata = src.nodata
 
+        # Skip if nodata is missing or already within expected range
         if crop_nodata is None or crop_nodata >= 1000 or crop_nodata <= -1000:
             return
-        
+        # Create mask where band 1 is the old nodata value
         nodata_mask = (cropped[0] == crop_nodata)
+        # Replace those pixels with the -9999 value
         cropped[0][nodata_mask] = -9999
 
+        # Update profile
         profile.update(dtype=rasterio.float32, nodata=-9999)
-
+        # Save raster
         with rasterio.open(output_path, 'w', **profile) as dst:
             dst.write(cropped.astype(rasterio.float32))
             dst.nodata = -9999
@@ -347,22 +342,21 @@ def robust_gdal_merge(tiff_files, output_path):
     import tempfile
     import subprocess
 
+    # Create a temporary txt file with all input files as to not max out command line
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False, mode="w") as list_file:
         list_path = list_file.name
         list_file.write("\n".join(tiff_files))
 
-    # Create a temporary VRT file
+    # Create a temporary virtual raster file
     with tempfile.NamedTemporaryFile(suffix=".vrt", delete=False) as vrt_file:
         vrt_path = vrt_file.name
 
     try:
-        # Build the VRT (virtual raster stack)
+        # Build the virtual raster
         subprocess.check_call([
             "gdalbuildvrt", "-input_file_list", list_path, vrt_path
         ])
-
-
-        # Translate to a real, physical GeoTIFF file
+        # Convert virtual raster to geotiff
         subprocess.check_call([
             "gdal_translate",
             "-co", "TILED=YES",
@@ -372,6 +366,7 @@ def robust_gdal_merge(tiff_files, output_path):
             output_path
         ])
     finally:
+        # Clean up temp files
         for p in [list_path, vrt_path]:
             if os.path.exists(p):
                 os.remove(p)
@@ -383,10 +378,10 @@ def robust_remove_invalid_pixels(cropped_path, input_path, output_path):
     with rasterio.open(cropped_path) as crp, rasterio.open(input_path) as inp:
         profile = inp.profile
         profile.update(dtype=rasterio.uint8)
-
         with rasterio.open(output_path, 'w', **profile) as dst:
             # Iterate through the raster in blocks
             for ji, window in inp.block_windows(1):
+                # Read corresponding block
                 cropped_block = crp.read(1, window=window)
                 data_block = inp.read(window=window)
 
@@ -400,7 +395,8 @@ def robust_remove_invalid_pixels(cropped_path, input_path, output_path):
                 data_block[1][invalid_mask] = 0
                 data_block[2][invalid_mask] = 127
                 data_block[3][:, :] = 255
-
+                
+                # Write modified block
                 dst.write(data_block, window=window)
     
     return invalid_pixels

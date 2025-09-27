@@ -1,15 +1,7 @@
-import os
-import sys
-def setup_libs():
-    current_dir = os.path.dirname(__file__)
-    while current_dir != os.path.dirname(current_dir):
-        if os.path.exists(os.path.join(current_dir, 'libs')):
-            libs_dir = os.path.join(current_dir, 'libs')
-            if libs_dir not in sys.path:
-                sys.path.insert(0, libs_dir)
-            return
-        current_dir = os.path.dirname(current_dir)
+from ..safe_libs_setup import setup_libs, safe_import_ml_libraries
+
 setup_libs()
+libs = safe_import_ml_libraries()
 
 
 
@@ -18,6 +10,7 @@ from PIL import Image
 from matplotlib import pyplot as plt
 import numpy as np
 import os 
+
     
 from qgisplugin.core.models import *
 from qgisplugin.core.smooth_tiled_predictions import predict_img_with_smooth_windowing
@@ -80,9 +73,6 @@ def test_with_chunk_blending(test_img_path, weight_path):
     predictions_smooth = np.squeeze(predictions_smooth)
     output_file_name = "smooth_out.png"
     plt.imsave(output_file_name, predictions_smooth, cmap="jet")
-
-
-
 
 def test(test_files, weight_path):
     '''NAIVE chunking test function
