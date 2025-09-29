@@ -4,7 +4,7 @@
 
 This [QGIS](https://www.qgis.org/en/site/) plugin identifies potential shipwreck sites from multibeam sonar data. Raster layers are passed through a deep learning segmentation model to produce a binary segmentation mask that clearly identifies the shipwreck site, and bounding boxes can be extracted from these segmentation masks if desired. Four different models are available for use, each trained with a unique backbone, and each with their own strengths and weaknesses.
 
-For installation instructions, a list of features, and various demos please visit [the wiki page](https://github.com/umfieldrobotics/ShipwreckSeekerQGISPlugin/wiki)
+For installation instructions, a list of features, and various demos please visit [the wiki page](https://github.com/umfieldrobotics/ShipwreckFinderQGISPlugin/wiki)
 
 *The project structure is based on 'Create A QGIS Plugin' created by Crabbé Ann, Jakimow Benjamin*
 *and Somers Ben and funded by BELSPO STEREO III (Project LUMOS - SR/01/321).*

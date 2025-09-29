@@ -21,8 +21,8 @@
 """
 # todo: update all of these variables with your own information
 dense_name = 'python-package'  # used for distributing your package on pip or qgis, no spaces
-long_name = 'Shipwreck Seeker Plugin'  # what users see in the QGIS plugin repository and on the RTD toc
-pdf_title = 'Shipwreck Seeker Plugin'  # the front page title on the read the docs PDF version
+long_name = 'ShipwreckFinder Plugin'  # what users see in the QGIS plugin repository and on the RTD toc
+pdf_title = 'ShipwreckFinder Plugin'  # the front page title on the read the docs PDF version
 
 author = 'Drew'  # your name
 author_email = 'drewskis@umich.edu'  # your contact information
