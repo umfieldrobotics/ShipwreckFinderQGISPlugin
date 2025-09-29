@@ -4,9 +4,6 @@ setup_libs()
 libs = safe_import_ml_libraries()
 
 import os
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
-
 import torch 
 import cv2
 from qgisplugin.core.models import *
